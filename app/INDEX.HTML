@@ -724,7 +724,7 @@
       <h1>SARDINHAS Bitcoin <span>Intelligence</span></h1>
     </div>
     <div class="header-right">
-      <span class="live-dot"></span> A atualizar a cada minuto<br>
+      <span class="live-dot"></span> Em tempo real<br>
       Última atualização: <span id="updated">--</span>
     </div>
   </header>
@@ -1071,6 +1071,21 @@
     }
   }
 
+  // ── BTC TICKER (cada 2s) ──
+  async function tickBTC() {
+    try {
+      const r = await fetch('/api/btc-tick');
+      const d = await r.json();
+      if (d.btc_usd) {
+        document.getElementById('btc-price').textContent =
+          '$' + d.btc_usd.toLocaleString('pt-PT', { maximumFractionDigits: 0 });
+      }
+      if (d.btc_change_24h !== null && d.btc_change_24h !== undefined) {
+        setBadge(document.getElementById('btc-badge'), d.btc_change_24h);
+      }
+    } catch(e) { console.warn('btc-tick falhou:', e); /* próximo tick em 2s */ }
+  }
+
   // ── DATA.JSON ──
   function loadAnalysis() {
     fetch('data.json?t=' + Date.now())
@@ -1176,7 +1191,7 @@
       document.getElementById('updated').textContent = ts;
     }
     // Agente IA refresca a cada 5 minutos (300 segundos) para não sobrecarregar Groq
-    if (agentTick >= 300) {
+    if (agentTick >= 120) {
       agentTick = 0;
       loadAgentSummary();
     }
@@ -1210,11 +1225,18 @@
       el.style.display = 'block';
       el.textContent = d.summary || 'Resumo indisponível.';
       document.getElementById('agent-updated').textContent = 'gerado às ' + (d.generated_at || '--');
+      // Atualizar também o sentimento no hero card com uma frase curta do agente
+      if (d.summary) {
+      const firstSentence = d.summary.split(/[.!?]/).filter(s => s.trim().length > 0)[0]?.trim();
+        if (firstSentence && firstSentence.length > 10) {
+          document.getElementById('btc-summary').textContent = firstSentence + '.';
+        }
+      }
     } catch(e) {
       document.getElementById('agent-skeleton').style.display = 'none';
       const el = document.getElementById('agent-summary');
       el.style.display = 'block';
-      el.textContent = 'Agente indisponível — verifica se o Ollama está a correr.';
+      el.textContent = 'Erro ao carregar resumo do agente.';
       document.getElementById('agent-updated').textContent = 'erro';
     }
   }
@@ -1282,6 +1304,7 @@
   loadFearGreed();
   loadNews();
   loadAgentSummary();
+  setInterval(tickBTC, 2000);
   setInterval(tickTimer, 1000);
 </script>
 <script>
