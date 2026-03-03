@@ -1061,7 +1061,8 @@
           d.crude_usd ? '$' + d.crude_usd.toFixed(1) + ' / barril (WTI)' : 'Petróleo WTI';
       }
 
-      document.getElementById('updated').textContent = d.updated || '--';
+      document.getElementById('updated').textContent = d.updated ||
+        new Date().toLocaleString('pt-PT', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
     } catch(e) { console.warn('Preços falharam:', e); }
   }
 
@@ -1155,20 +1156,21 @@
   // ── TIMER ──
   const INTERVAL = 60;
   let countdown = INTERVAL;
-  let newsTick = 0;
+  let agentTick = 0;
   function tickTimer() {
     countdown--;
-    newsTick++;
+    agentTick++;
     if (countdown <= 0) {
       countdown = INTERVAL;
       loadPrices();
       loadAnalysis();
       loadFearGreed();
-    }
-    // Notícias refrescam a cada 10 minutos (600 segundos)
-    if (newsTick >= 600) {
-      newsTick = 0;
       loadNews();
+    }
+    // Agente IA refresca a cada 5 minutos (300 segundos) para não sobrecarregar Groq
+    if (agentTick >= 300) {
+      agentTick = 0;
+      loadAgentSummary();
     }
     document.getElementById('timer-fill').style.width = ((INTERVAL-countdown)/INTERVAL*100)+'%';
   }
