@@ -149,6 +149,11 @@
       color: var(--btc);
       letter-spacing: -1px;
       line-height: 1;
+      transition: color 0.3s ease;
+    }
+    .price-flash {
+      color: #fff !important;
+      transition: color 0.3s ease;
     }
 
     .hero-label {
@@ -1071,19 +1076,28 @@
     }
   }
 
-  // ── BTC TICKER (cada 2s) ──
+  // ── BTC TICKER (cada 3s) ──
+  function animatePrice(el) {
+    el.classList.add('price-flash');
+    setTimeout(() => el.classList.remove('price-flash'), 300);
+  }
+
   async function tickBTC() {
     try {
       const r = await fetch('/api/btc-tick');
       const d = await r.json();
       if (d.btc_usd) {
-        document.getElementById('btc-price').textContent =
-          '$' + d.btc_usd.toLocaleString('pt-PT', { maximumFractionDigits: 0 });
+        const el = document.getElementById('btc-price');
+        const newText = '$' + d.btc_usd.toLocaleString('pt-PT', { maximumFractionDigits: 0 });
+        if (el.textContent !== newText) {
+          animatePrice(el);
+          el.textContent = newText;
+        }
       }
       if (d.btc_change_24h !== null && d.btc_change_24h !== undefined) {
         setBadge(document.getElementById('btc-badge'), d.btc_change_24h);
       }
-    } catch(e) { console.warn('btc-tick falhou:', e); /* próximo tick em 2s */ }
+    } catch(e) { console.warn('btc-tick falhou:', e); /* próximo tick em 3s */ }
   }
 
   // ── DATA.JSON ──
@@ -1304,7 +1318,7 @@
   loadFearGreed();
   loadNews();
   loadAgentSummary();
-  setInterval(tickBTC, 2000);
+  setInterval(tickBTC, 3000);
   setInterval(tickTimer, 1000);
 </script>
 <script>

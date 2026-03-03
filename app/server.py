@@ -30,6 +30,9 @@ _prices_cache = {
     "timestamp": None
 }
 
+# Cache para o ticker rápido BTC (TTL de 10s — Coinbase como fonte principal)
+_btc_tick_cache = {"price": None, "change": None, "timestamp": None}
+
 # ── HELPER: Ler data.json ──────────────────────────────────────────────────────
 def get_dashboard_data():
     """Lê data.json e devolve dict. Se não existir, devolve template vazio."""
@@ -172,6 +175,14 @@ def api_config():
 @app.route('/api/prices')
 def api_prices():
     """Devolve preços ao vivo do Bitcoin e ativos relacionados."""
+    # Cache de 60 segundos — evitar rate-limit da CoinGecko
+    if _prices_cache["data"] and _prices_cache["timestamp"]:
+        age = (datetime.now() - _prices_cache["timestamp"]).total_seconds()
+        if age < 60:
+            cached = _prices_cache["data"].copy()
+            cached["from_cache"] = True
+            return jsonify(cached), 200
+
     try:
         prices_resp = requests.get(
             "https://api.coingecko.com/api/v3/simple/price",
@@ -263,29 +274,80 @@ def api_prices():
 # ── ROTA: BTC Ticker Rápido ───────────────────────────────────────────────────
 @app.route('/api/btc-tick')
 def api_btc_tick():
-    """Preço BTC rápido para ticker de 2 segundos."""
+    """Preço BTC rápido para ticker. Coinbase como fonte principal (cache 10s)."""
+    # Servir da cache se ainda válida (TTL 10s)
+    if _btc_tick_cache["timestamp"]:
+        age = (datetime.now() - _btc_tick_cache["timestamp"]).total_seconds()
+        if age < 10 and _btc_tick_cache["price"] is not None:
+            return jsonify({
+                "btc_usd": _btc_tick_cache["price"],
+                "btc_change_24h": _btc_tick_cache["change"],
+                "from_cache": True,
+            }), 200
+
+    btc_usd = None
+    btc_change = None
+
+    # Fonte principal: Coinbase (~100 req/min, sem API key)
     try:
         resp = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={"ids": "bitcoin", "vs_currencies": "usd", "include_24hr_change": "true"},
+            "https://api.coinbase.com/v2/prices/BTC-USD/spot",
             timeout=5,
         )
-        data = resp.json()
-        btc_usd = data["bitcoin"]["usd"]
-        btc_change = data["bitcoin"].get("usd_24h_change", 0.0)
-        # Atualizar cache também
-        if _prices_cache["data"]:
-            _prices_cache["data"]["btc_usd"] = btc_usd
-            _prices_cache["data"]["btc_change_24h"] = round(btc_change, 2)
-        return jsonify({"btc_usd": btc_usd, "btc_change_24h": round(btc_change, 2)}), 200
+        resp.raise_for_status()
+        btc_usd = float(resp.json()["data"]["amount"])
     except Exception as e:
-        logger.warning(f"btc-tick falhou: {e}")
-        if _prices_cache["data"]:
+        logger.warning(f"btc-tick Coinbase falhou: {e}")
+
+    # Variação 24h — usar cache de /api/prices se disponível (sem call extra)
+    if _prices_cache["data"] and _prices_cache["data"].get("btc_change_24h") is not None:
+        btc_change = _prices_cache["data"]["btc_change_24h"]
+
+    # Fallback: CoinGecko para preço (se Coinbase falhou)
+    if btc_usd is None:
+        try:
+            resp = requests.get(
+                "https://api.coingecko.com/api/v3/simple/price",
+                params={"ids": "bitcoin", "vs_currencies": "usd", "include_24hr_change": "true"},
+                timeout=5,
+            )
+            data = resp.json()
+            btc_usd = data["bitcoin"]["usd"]
+            if btc_change is None:
+                btc_change = data["bitcoin"].get("usd_24h_change", 0.0)
+        except Exception as e:
+            logger.warning(f"btc-tick CoinGecko falhou: {e}")
+
+    # Fallback final: _prices_cache
+    if btc_usd is None and _prices_cache["data"]:
+        btc_usd = _prices_cache["data"].get("btc_usd")
+        if btc_change is None:
+            btc_change = _prices_cache["data"].get("btc_change_24h", 0.0)
+
+    if btc_usd is None:
+        # Nenhuma fonte disponível
+        if _btc_tick_cache["price"] is not None:
             return jsonify({
-                "btc_usd": _prices_cache["data"].get("btc_usd", 0),
-                "btc_change_24h": _prices_cache["data"].get("btc_change_24h", 0.0),
+                "btc_usd": _btc_tick_cache["price"],
+                "btc_change_24h": _btc_tick_cache["change"],
+                "from_cache": True,
             }), 200
         return jsonify({"error": "unavailable"}), 502
+
+    if btc_change is None:
+        btc_change = 0.0
+
+    # Actualizar cache do ticker
+    _btc_tick_cache["price"] = btc_usd
+    _btc_tick_cache["change"] = round(btc_change, 2)
+    _btc_tick_cache["timestamp"] = datetime.now()
+
+    # Actualizar também _prices_cache para consistência
+    if _prices_cache["data"]:
+        _prices_cache["data"]["btc_usd"] = btc_usd
+        _prices_cache["data"]["btc_change_24h"] = round(btc_change, 2)
+
+    return jsonify({"btc_usd": btc_usd, "btc_change_24h": round(btc_change, 2)}), 200
 
 
 # ── ROTA: Fear & Greed Index ───────────────────────────────────────────────────
