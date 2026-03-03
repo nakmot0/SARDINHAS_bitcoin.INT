@@ -210,140 +210,131 @@ def fetch_prices():
         'dxy_approx':None,'crude_usd':None,'crude_btc':None,'source':[],
     }
 
-    HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
-        'Accept': 'application/json',
-    }
+    H = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
 
-    # ── 1. BTC preço spot — Coinbase (mais fiável em cloud) ───────────────────
-    try:
-        r = requests.get('https://api.coinbase.com/v2/prices/BTC-USD/spot',
-                         headers=HEADERS, timeout=8)
-        r.raise_for_status()
-        result['btc_usd'] = float(r.json()['data']['amount'])
-        result['source'].append('Coinbase')
-        print(f"BTC: ${result['btc_usd']:,.0f}")
-    except Exception as e: print(f"Coinbase: {e}")
-
-    # ── 2. Binance — variação 1h e 24h (sem bloqueio cloud) ──────────────────
-    try:
-        r = requests.get('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT',
-                         headers=HEADERS, timeout=8)
-        r.raise_for_status(); d = r.json()
-        if result['btc_usd'] is None:
-            result['btc_usd'] = float(d['lastPrice'])
-        result['btc_change_24h'] = float(d['priceChangePercent'])
-        result['source'].append('Binance')
-        print(f"BTC 24h: {result['btc_change_24h']:.2f}%")
-    except Exception as e: print(f"Binance 24h: {e}")
-
-    # ── 3. Binance — variação 1h (kline) ─────────────────────────────────────
+    # ── 1. BTC + ETH + variações — Kraken (sem bloqueio em cloud) ────────────
     try:
         r = requests.get(
-            'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=2',
-            headers=HEADERS, timeout=8)
-        r.raise_for_status(); klines = r.json()
-        if len(klines) >= 2:
-            open_1h  = float(klines[-1][1])
-            close_1h = float(klines[-1][4])
+            'https://api.kraken.com/0/public/Ticker?pair=XBTUSD,ETHUSD,ETHXBT',
+            headers=H, timeout=10)
+        r.raise_for_status(); d = r.json()['result']
+
+        btc = d.get('XXBTZUSD', d.get('XBTUSD', {}))
+        if btc:
+            result['btc_usd'] = float(btc['c'][0])
+            result['source'].append('Kraken')
+            print(f"BTC: ${result['btc_usd']:,.0f}")
+
+        eth = d.get('XETHXXBT', d.get('ETHXBT', {}))
+        if eth:
+            result['eth_btc'] = float(eth['c'][0])
+            print(f"ETH/BTC: {result['eth_btc']:.5f}")
+    except Exception as e: print(f"Kraken ticker: {e}")
+
+    # ── 2. BTC variação 24h — Kraken OHLC ────────────────────────────────────
+    try:
+        r = requests.get(
+            'https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1440',
+            headers=H, timeout=10)
+        r.raise_for_status(); d = r.json()['result']
+        key = [k for k in d if k != 'last'][0]
+        candles = d[key]
+        if len(candles) >= 2:
+            open_24h  = float(candles[-2][1])
+            close_24h = float(candles[-1][4])
+            if open_24h > 0:
+                result['btc_change_24h'] = round((close_24h - open_24h) / open_24h * 100, 3)
+                print(f"BTC 24h: {result['btc_change_24h']:.2f}%")
+    except Exception as e: print(f"Kraken 24h: {e}")
+
+    # ── 3. BTC variação 1h — Kraken OHLC 1h ──────────────────────────────────
+    try:
+        r = requests.get(
+            'https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=60',
+            headers=H, timeout=10)
+        r.raise_for_status(); d = r.json()['result']
+        key = [k for k in d if k != 'last'][0]
+        candles = d[key]
+        if len(candles) >= 2:
+            open_1h  = float(candles[-2][1])
+            close_1h = float(candles[-1][4])
             if open_1h > 0:
                 result['btc_change_1h'] = round((close_1h - open_1h) / open_1h * 100, 3)
                 print(f"BTC 1h: {result['btc_change_1h']:.2f}%")
-    except Exception as e: print(f"Binance 1h: {e}")
+    except Exception as e: print(f"Kraken 1h: {e}")
 
-    # ── 4. Binance — ETH/BTC ──────────────────────────────────────────────────
+    # ── 4. Dominância — Coinpaprika (sem rate limit em cloud) ────────────────
     try:
-        r = requests.get('https://api.binance.com/api/v3/ticker/price?symbol=ETHBTC',
-                         headers=HEADERS, timeout=8)
+        r = requests.get('https://api.coinpaprika.com/v1/global', headers=H, timeout=10)
         r.raise_for_status()
-        result['eth_btc'] = float(r.json()['price'])
-        print(f"ETH/BTC: {result['eth_btc']:.5f}")
-    except Exception as e: print(f"Binance ETH/BTC: {e}")
-
-    # ── 5. CoinGecko — dominância + ouro/BTC (com header User-Agent) ─────────
-    try:
-        r = requests.get(
-            'https://api.coingecko.com/api/v3/simple/price'
-            '?ids=bitcoin,tether-gold&vs_currencies=usd,btc'
-            '&include_24hr_change=true',
-            headers=HEADERS, timeout=12)
-        r.raise_for_status(); data = r.json()
-        xaut = data.get('tether-gold', {})
-        if xaut:
-            result['gold_btc'] = xaut.get('btc')
-            print(f"Ouro/BTC: {result['gold_btc']}")
-        result['source'].append('CoinGecko')
-    except Exception as e: print(f"CoinGecko preços: {e}")
-
-    time.sleep(0.5)
-
-    # ── 6. CoinGecko global — dominância ─────────────────────────────────────
-    try:
-        r = requests.get('https://api.coingecko.com/api/v3/global',
-                         headers=HEADERS, timeout=12)
-        r.raise_for_status()
-        result['dominance'] = r.json()['data']['market_cap_percentage']['btc']
+        result['dominance'] = r.json().get('bitcoin_dominance_percentage')
         print(f"Dominância: {result['dominance']:.1f}%")
-    except Exception as e:
-        print(f"CoinGecko global: {e}")
-        # Fallback: CoinMarketCap público (sem API key)
-        try:
-            r = requests.get(
-                'https://api.coinpaprika.com/v1/global',
-                headers=HEADERS, timeout=8)
-            r.raise_for_status()
-            result['dominance'] = r.json().get('bitcoin_dominance_percentage')
-            if result['dominance']:
-                print(f"Dominância (Coinpaprika): {result['dominance']:.1f}%")
-        except Exception as e2: print(f"Coinpaprika dominância: {e2}")
+    except Exception as e: print(f"Coinpaprika dominância: {e}")
 
-    # ── 7. Ouro via MetalPriceAPI público (fallback se CoinGecko falhar) ─────
-    if result['gold_btc'] is None and result['btc_usd']:
-        try:
-            # Frankfurter não tem ouro, usar metals-api open endpoint
-            # Ouro spot via Yahoo Finance CSV (sem bloqueio cloud)
-            r = requests.get(
-                'https://query1.finance.yahoo.com/v8/finance/chart/GC=F'
-                '?interval=1d&range=1d',
-                headers=HEADERS, timeout=10)
-            r.raise_for_status()
-            gold_usd = r.json()['chart']['result'][0]['meta']['regularMarketPrice']
-            result['gold_btc'] = gold_usd / result['btc_usd']
-            print(f"Ouro (Yahoo): ${gold_usd:.0f} = {result['gold_btc']:.5f} BTC")
-        except Exception as e: print(f"Yahoo ouro: {e}")
-
-    # ── 8. Petróleo WTI via Yahoo Finance ────────────────────────────────────
+    # ── 5. Ouro USD — metals.dev API (free tier, sem API key necessária) ─────
+    # gold price via open.er-api ou fixer fallback
+    gold_usd = None
     try:
+        # Frankfurter não tem metais, usar metals-api alternativa
+        # API pública do Gold Price API (goldapi.io tem free tier mas precisa registo)
+        # Usar Open Exchange Rates via metals endpoint
         r = requests.get(
-            'https://query1.finance.yahoo.com/v8/finance/chart/CL=F'
-            '?interval=1d&range=1d',
-            headers=HEADERS, timeout=10)
+            'https://api.metals.live/v1/spot/gold',
+            headers=H, timeout=10)
         r.raise_for_status()
-        crude_usd = r.json()['chart']['result'][0]['meta']['regularMarketPrice']
-        result['crude_usd'] = crude_usd
-        if result['btc_usd']:
-            result['crude_btc'] = crude_usd / result['btc_usd']
-        print(f"WTI: ${crude_usd:.1f} = {result['crude_btc']:.5f} BTC")
-    except Exception as e:
-        print(f"Yahoo WTI: {e}")
-        # Fallback Stooq
+        data = r.json()
+        # resposta: [{"gold": 3300.5}] ou {"price": 3300.5}
+        if isinstance(data, list) and data:
+            gold_usd = float(data[0].get('gold', 0)) or None
+        elif isinstance(data, dict):
+            gold_usd = float(data.get('price', 0) or data.get('gold', 0)) or None
+        if gold_usd:
+            print(f"Ouro (metals.live): ${gold_usd:.0f}")
+    except Exception as e: print(f"metals.live: {e}")
+
+    # Fallback ouro: Stooq GC.F
+    if not gold_usd:
         try:
-            r = requests.get('https://stooq.com/q/l/?s=cl.f&f=sd2t2ohlcv&h&e=csv',
-                             headers=HEADERS, timeout=8)
+            r = requests.get('https://stooq.com/q/l/?s=gc.f&f=sd2t2ohlcv&h&e=csv',
+                             headers=H, timeout=10)
             r.raise_for_status()
             lines = [l.strip() for l in r.text.strip().split('\n') if l.strip()]
             for line in reversed(lines[1:]):
                 for col in reversed(line.split(',')):
                     try:
                         v = float(col)
-                        if 40 < v < 200:
-                            result['crude_usd'] = v
-                            if result['btc_usd']:
-                                result['crude_btc'] = v / result['btc_usd']
-                            break
+                        if 1500 < v < 5000: gold_usd = v; break
                     except: continue
-                if result['crude_usd']: break
-        except Exception as e2: print(f"Stooq WTI: {e2}")
+                if gold_usd: break
+            if gold_usd: print(f"Ouro (Stooq): ${gold_usd:.0f}")
+        except Exception as e: print(f"Stooq ouro: {e}")
+
+    if gold_usd and result['btc_usd']:
+        result['gold_btc'] = round(gold_usd / result['btc_usd'], 6)
+        print(f"Ouro/BTC: {result['gold_btc']:.6f}")
+
+    # ── 6. Petróleo WTI — Stooq cl.f ─────────────────────────────────────────
+    try:
+        r = requests.get('https://stooq.com/q/l/?s=cl.f&f=sd2t2ohlcv&h&e=csv',
+                         headers=H, timeout=10)
+        r.raise_for_status()
+        lines = [l.strip() for l in r.text.strip().split('\n') if l.strip()]
+        crude_usd = None
+        for line in reversed(lines[1:]):
+            for col in reversed(line.split(',')):
+                try:
+                    v = float(col)
+                    if 40 < v < 200: crude_usd = v; break
+                except: continue
+            if crude_usd: break
+        if crude_usd:
+            result['crude_usd'] = crude_usd
+            if result['btc_usd']:
+                result['crude_btc'] = round(crude_usd / result['btc_usd'], 6)
+            print(f"WTI: ${crude_usd:.1f} = {result['crude_btc']:.6f} BTC")
+        else:
+            print("WTI: N/D (mercado fechado)")
+    except Exception as e: print(f"Stooq WTI: {e}")
 
     result['updated'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
     return result
