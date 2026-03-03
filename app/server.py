@@ -1,545 +1,575 @@
 import os
-import json
-import logging
 import re
-import subprocess
-import sys
+import json
+import time
+import sqlite3
+import hashlib
+import logging
+import threading
 from pathlib import Path
 from datetime import datetime
-from flask import Flask, jsonify, request
+
 import requests
 import feedparser
+from flask import Flask, jsonify, request, send_from_directory
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__, static_folder='.', static_url_path='')
-
-# ── CONFIG ────────────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).parent
-DATA_FILE = BASE_DIR / "data.json"
-HTML_FILE = BASE_DIR / "INDEX.HTML"
+BASE_DIR    = Path(__file__).parent
+DATA_FILE   = BASE_DIR / "data.json"
+HTML_FILE   = BASE_DIR / "INDEX.HTML"
 SOURCES_FILE = BASE_DIR / "sources.txt"
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
-# Cache em memória para preços (evita dados estáticos quando CoinGecko faz rate-limit)
-_prices_cache = {
-    "data": None,
-    "timestamp": None
+# BD persistente no disco do Render (/data) ou local
+_disk = os.environ.get('RENDER_DISK_PATH', str(BASE_DIR))
+DB_PATH = Path(_disk) / 'memory.db'
+
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL   = "llama-3.1-8b-instant"   # rápido + poupa tokens free tier
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+
+app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path='')
+
+
+# ── BASE DE DADOS — memória do agente ─────────────────────────────────────────
+def db_init():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(DB_PATH)
+    con.executescript("""
+        CREATE TABLE IF NOT EXISTS conversations (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            role       TEXT NOT NULL,
+            content    TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_sess ON conversations(session_id);
+        CREATE TABLE IF NOT EXISTS common_questions (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            question  TEXT NOT NULL UNIQUE,
+            count     INTEGER DEFAULT 1,
+            last_seen TEXT NOT NULL
+        );
+    """)
+    con.commit(); con.close()
+    logger.info(f"DB: {DB_PATH}")
+
+def db_save(sid, role, content):
+    try:
+        con = sqlite3.connect(DB_PATH)
+        con.execute(
+            "INSERT INTO conversations (session_id,role,content,created_at) VALUES (?,?,?,?)",
+            (sid, role, content, datetime.now().isoformat()))
+        con.commit(); con.close()
+    except Exception as e:
+        logger.warning(f"db_save: {e}")
+
+def db_history(sid, limit=10):
+    try:
+        con = sqlite3.connect(DB_PATH)
+        rows = con.execute(
+            "SELECT role,content FROM conversations WHERE session_id=? ORDER BY id DESC LIMIT ?",
+            (sid, limit)).fetchall()
+        con.close()
+        return [{'role': r, 'content': c} for r, c in reversed(rows)]
+    except Exception:
+        return []
+
+def db_track(q):
+    qn = q.strip().lower()[:200]
+    try:
+        con = sqlite3.connect(DB_PATH)
+        try:
+            con.execute(
+                "INSERT INTO common_questions (question,count,last_seen) VALUES (?,1,?) "
+                "ON CONFLICT(question) DO UPDATE SET count=count+1,last_seen=excluded.last_seen",
+                (qn, datetime.now().isoformat()))
+        except Exception:
+            con.execute("UPDATE common_questions SET count=count+1,last_seen=? WHERE question=?",
+                        (datetime.now().isoformat(), qn))
+        con.commit(); con.close()
+    except Exception as e:
+        logger.warning(f"db_track: {e}")
+
+def db_top(n=5):
+    try:
+        con = sqlite3.connect(DB_PATH)
+        rows = con.execute(
+            "SELECT question,count FROM common_questions ORDER BY count DESC LIMIT ?",
+            (n,)).fetchall()
+        con.close(); return rows
+    except Exception:
+        return []
+
+def db_stats():
+    try:
+        con = sqlite3.connect(DB_PATH)
+        msgs = con.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+        sess = con.execute("SELECT COUNT(DISTINCT session_id) FROM conversations").fetchone()[0]
+        qs   = con.execute("SELECT COUNT(*) FROM common_questions").fetchone()[0]
+        con.close()
+        return {'messages': msgs, 'sessions': sess, 'unique_questions': qs}
+    except Exception:
+        return {'messages': 0, 'sessions': 0, 'unique_questions': 0}
+
+
+# ── CACHE em memória ──────────────────────────────────────────────────────────
+_cache = {}
+CACHE_TTL = {
+    'prices':        60,
+    'news':          600,   # notícias: 10 min (evita sobrecarga RSS)
+    'feargreed':     3600,
+    'agent_summary': 300,
 }
 
-# Cache para o ticker rápido BTC (TTL de 10s — Coinbase como fonte principal)
-_btc_tick_cache = {"price": None, "change": None, "timestamp": None}
+def cache_get(key):
+    e = _cache.get(key)
+    if e and (time.time() - e['ts']) < CACHE_TTL.get(key, 60):
+        return e['data']
+    return None
 
-# ── HELPER: Ler data.json ──────────────────────────────────────────────────────
+def cache_set(key, data):
+    _cache[key] = {'data': data, 'ts': time.time()}
+
+
+# ── HELPER data.json ──────────────────────────────────────────────────────────
 def get_dashboard_data():
-    """Lê data.json e devolve dict. Se não existir, devolve template vazio."""
     try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
+        return json.loads(DATA_FILE.read_text(encoding='utf-8'))
+    except Exception:
         return {
             "bitcoin": {"price": "Carregando...", "change": "n/d", "dominance": "n/d"},
-            "eth": {"btc": "n/d"},
+            "eth":  {"btc": "n/d"},
             "gold": {"btc": "n/d"},
-            "dxy": {"state": "n/d"},
+            "dxy":  {"state": "n/d"},
             "editorial": "Aguardando primeira análise...",
-            "updated": datetime.now().strftime("%d/%m/%Y %H:%M")
+            "updated": datetime.now().strftime("%d/%m/%Y %H:%M"),
         }
 
-# ── ROTA: Servir HTML ──────────────────────────────────────────────────────────
+
+# ── FETCH PREÇOS (Kraken + Coinpaprika + Stooq) ───────────────────────────────
+def stooq_val(ticker, lo, hi):
+    """Busca valor numérico do Stooq — funciona em cloud sem bloqueio."""
+    r = requests.get(
+        f'https://stooq.com/q/l/?s={ticker}&f=sd2t2ohlcv&h&e=csv',
+        headers={'User-Agent': 'Mozilla/5.0'}, timeout=12)
+    r.raise_for_status()
+    for line in reversed([l.strip() for l in r.text.strip().split('\n') if l.strip()][1:]):
+        for col in reversed(line.split(',')):
+            try:
+                v = float(col)
+                if lo < v < hi: return v
+            except Exception: continue
+    return None
+
+def fetch_prices():
+    result = {
+        'btc_usd': None, 'btc_change_24h': None, 'btc_change_1h': None,
+        'eth_btc': None, 'gold_btc': None, 'dominance': None,
+        'crude_usd': None, 'crude_btc': None, 'source': [],
+    }
+    H = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
+
+    # ── Kraken: BTC spot + ETH/BTC ───────────────────────────────────────────
+    try:
+        r = requests.get('https://api.kraken.com/0/public/Ticker?pair=XBTUSD,ETHXBT',
+                         headers=H, timeout=10)
+        r.raise_for_status(); d = r.json().get('result', {})
+        for k in ['XXBTZUSD', 'XBTUSD']:
+            if k in d: result['btc_usd'] = float(d[k]['c'][0]); break
+        for k in ['XETHXXBT', 'ETHXBT']:
+            if k in d: result['eth_btc'] = float(d[k]['c'][0]); break
+        result['source'].append('Kraken')
+        logger.info(f"BTC: ${result['btc_usd']:,.0f} | ETH/BTC: {result['eth_btc']}")
+    except Exception as e:
+        logger.warning(f"Kraken ticker: {e}")
+
+    # Fallback BTC: Coinbase
+    if result['btc_usd'] is None:
+        try:
+            r = requests.get('https://api.coinbase.com/v2/prices/BTC-USD/spot',
+                             headers=H, timeout=8)
+            r.raise_for_status()
+            result['btc_usd'] = float(r.json()['data']['amount'])
+            result['source'].append('Coinbase')
+        except Exception as e:
+            logger.warning(f"Coinbase: {e}")
+
+    # ── Kraken OHLC: variação 24h ─────────────────────────────────────────────
+    try:
+        r = requests.get('https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1440',
+                         headers=H, timeout=10)
+        r.raise_for_status(); d = r.json().get('result', {})
+        key = next((k for k in d if k != 'last'), None)
+        if key and len(d[key]) >= 2:
+            o, c = float(d[key][-2][1]), float(d[key][-1][4])
+            if o > 0: result['btc_change_24h'] = round((c - o) / o * 100, 3)
+    except Exception as e:
+        logger.warning(f"Kraken 24h: {e}")
+
+    # ── Kraken OHLC: variação 1h ──────────────────────────────────────────────
+    try:
+        r = requests.get('https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=60',
+                         headers=H, timeout=10)
+        r.raise_for_status(); d = r.json().get('result', {})
+        key = next((k for k in d if k != 'last'), None)
+        if key and len(d[key]) >= 2:
+            o, c = float(d[key][-2][1]), float(d[key][-1][4])
+            if o > 0: result['btc_change_1h'] = round((c - o) / o * 100, 3)
+    except Exception as e:
+        logger.warning(f"Kraken 1h: {e}")
+
+    # ── Dominância: Coinpaprika (sem rate-limit em cloud) ────────────────────
+    try:
+        r = requests.get('https://api.coinpaprika.com/v1/global', headers=H, timeout=10)
+        r.raise_for_status()
+        result['dominance'] = r.json().get('bitcoin_dominance_percentage')
+    except Exception as e:
+        logger.warning(f"Coinpaprika: {e}")
+
+    # ── Ouro: Kraken XAUUSD ───────────────────────────────────────────────────
+    gold_usd = None
+    try:
+        r = requests.get('https://api.kraken.com/0/public/Ticker?pair=XAUUSD',
+                         headers=H, timeout=10)
+        r.raise_for_status(); d = r.json().get('result', {})
+        key = next(iter(d), None)
+        if key: gold_usd = float(d[key]['c'][0])
+        logger.info(f"Ouro (Kraken): ${gold_usd:.0f}")
+    except Exception as e:
+        logger.warning(f"Kraken ouro: {e}")
+
+    # Fallback ouro: Stooq GC.F
+    if not gold_usd:
+        try:
+            gold_usd = stooq_val('gc.f', 1500, 5000)
+            if gold_usd: logger.info(f"Ouro (Stooq): ${gold_usd:.0f}")
+        except Exception as e:
+            logger.warning(f"Stooq ouro: {e}")
+
+    if gold_usd and result['btc_usd']:
+        result['gold_btc'] = round(gold_usd / result['btc_usd'], 6)
+
+    # ── Petróleo WTI: Stooq CL.F ─────────────────────────────────────────────
+    try:
+        crude_usd = stooq_val('cl.f', 40, 200)
+        if crude_usd:
+            result['crude_usd'] = crude_usd
+            if result['btc_usd']:
+                result['crude_btc'] = round(crude_usd / result['btc_usd'], 6)
+            logger.info(f"WTI: ${crude_usd:.1f}")
+        else:
+            logger.info("WTI: N/D (mercado fechado)")
+    except Exception as e:
+        logger.warning(f"Stooq WTI: {e}")
+
+    result['updated'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    return result
+
+
+# ── NOTÍCIAS ──────────────────────────────────────────────────────────────────
+BULLISH = ["bull","surge","rally","high","gain","up","rise","record","ath","buy","halving","adoption","etf","inflow"]
+BEARISH = ["bear","crash","drop","down","fall","low","sell","dump","fear","hack","ban","risk","outflow","decline"]
+
+def classify(title):
+    t = title.lower()
+    b = sum(1 for w in BULLISH if w in t)
+    n = sum(1 for w in BEARISH if w in t)
+    return 'bullish' if b > n else 'bearish' if n > b else 'neutral'
+
+def load_sources():
+    if not SOURCES_FILE.exists():
+        return ['https://www.coindesk.com/arc/outboundfeeds/rss/',
+                'https://cointelegraph.com/rss']
+    sources = []
+    for line in SOURCES_FILE.read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'): continue
+        # Ignorar instâncias Nitter (frequentemente offline)
+        if 'nitter' in line: continue
+        sources.append(line)
+    return sources
+
+def fetch_news():
+    H = {'User-Agent': 'Mozilla/5.0 (compatible; BitcoinIntelligence/1.0)'}
+    sources = load_sources()
+    items = []
+    for url in sources[:8]:
+        if len(items) >= 20: break
+        try:
+            resp = requests.get(url, headers=H, timeout=8)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.content)
+            name = feed.feed.get('title', url.split('/')[2]) if feed.feed else url.split('/')[2]
+            for entry in feed.entries[:3]:
+                title = entry.get('title', '').strip()
+                if not title: continue
+                pub = entry.get('published', '')
+                date_str = pub[:16] if pub else '--'
+                try:
+                    import email.utils
+                    dt = email.utils.parsedate_to_datetime(pub)
+                    date_str = dt.strftime('%d %b %H:%M')
+                except Exception: pass
+                items.append({
+                    'title':     title,
+                    'source':    name,
+                    'date':      date_str,
+                    'sentiment': classify(title),
+                    'link':      entry.get('link', ''),
+                })
+        except Exception as e:
+            logger.warning(f"Feed {url}: {e}")
+
+    if not items:
+        items = [{'title': 'Sem notícias disponíveis', 'source': 'Sistema',
+                  'date': '--', 'sentiment': 'neutral', 'link': ''}]
+    return {'items': items, 'updated': datetime.now().strftime('%H:%M')}
+
+
+# ── GROQ ──────────────────────────────────────────────────────────────────────
+def call_groq(system_prompt, messages, max_tokens=500):
+    if not GROQ_API_KEY:
+        raise RuntimeError('GROQ_API_KEY não configurada no Render → Environment.')
+    payload = [{'role': 'system', 'content': system_prompt}]
+    for m in messages:
+        payload.append({'role': 'user' if m['role'] == 'user' else 'assistant',
+                        'content': m['content']})
+    resp = requests.post(
+        GROQ_API_URL,
+        headers={'Authorization': f'Bearer {GROQ_API_KEY}', 'Content-Type': 'application/json'},
+        json={'model': GROQ_MODEL, 'messages': payload,
+              'max_tokens': max_tokens, 'temperature': 0.4},
+        timeout=30)
+    if resp.status_code == 401: raise RuntimeError('GROQ_API_KEY inválida.')
+    if resp.status_code == 429: raise RuntimeError('Limite Groq atingido (25k tokens/dia). Tenta amanhã.')
+    resp.raise_for_status()
+    return resp.json()['choices'][0]['message']['content'].strip()
+
+def build_system(snapshot=None):
+    now = datetime.now().strftime('%A, %d de %B de %Y às %H:%M')
+    if snapshot:
+        s = snapshot
+        dados = (
+            f"Dados em tempo real:\n"
+            f"- BTC/USD: {s.get('price','--')} (1h: {s.get('change1h','--')} | 24h: {s.get('change','--')})\n"
+            f"- Dominância: {s.get('dom','--')} | Fear&Greed: {s.get('fg','--')} {s.get('fgLabel','')}\n"
+            f"- ETH/BTC: {s.get('ethBtc','--')} | Ouro/BTC: {s.get('goldBtc','--')} | WTI/BTC: {s.get('crudeBtc','--')}\n"
+            f"- Ciclo pós-halving: {s.get('halvDays','--')} ({s.get('halvPct','--')})\n"
+            f"- Editorial: \"{s.get('editorial','--')}\""
+        )
+    else:
+        p  = cache_get('prices') or {}
+        fg = cache_get('feargreed') or {}
+        ch24 = p.get('btc_change_24h'); ch1h = p.get('btc_change_1h')
+        cr = p.get('crude_btc'); dom = p.get('dominance')
+        dados = (
+            f"Dados em tempo real:\n"
+            f"- BTC/USD: ${p.get('btc_usd','--')} "
+            f"(1h: {('%.2f%%'%ch1h) if ch1h is not None else '--'} | "
+            f"24h: {('%.2f%%'%ch24) if ch24 is not None else '--'})\n"
+            f"- Dominância: {('%.1f%%'%dom) if dom is not None else '--'} | "
+            f"Fear&Greed: {fg.get('value','--')} {fg.get('classification','')}\n"
+            f"- ETH/BTC: {p.get('eth_btc','--')} | Ouro/BTC: {p.get('gold_btc','--')} | "
+            f"WTI/BTC: {('%.5f BTC'%cr) if cr is not None else '--'}"
+        )
+    top_q = db_top(3)
+    mem = ('\nTópicos mais perguntados: ' + ' | '.join(f'"{q}"({c}x)' for q,c in top_q)) if top_q else ''
+    return (
+        "És um agente especializado em análise de mercados financeiros com foco em Bitcoin. "
+        "Respondes SEMPRE em português de Portugal (PT-PT), de forma clara e directa.\n\n"
+        f"Data: {now}\n\n{dados}{mem}\n\n"
+        "Sê conciso (3-5 frases). Sem emojis. Nada é conselho financeiro directo."
+    )
+
+
+# ── FEAR & GREED ──────────────────────────────────────────────────────────────
+def fetch_feargreed():
+    try:
+        r = requests.get('https://api.alternative.me/fng/?limit=7', timeout=10)
+        r.raise_for_status(); data = r.json().get('data', [])
+        if not data: return {'value': '50', 'yesterday': '50', 'last_week': '50'}
+        return {
+            'value':          data[0]['value'],
+            'classification': data[0].get('value_classification', ''),
+            'yesterday':      data[1]['value'] if len(data) > 1 else data[0]['value'],
+            'last_week':      data[6]['value'] if len(data) > 6 else data[0]['value'],
+        }
+    except Exception as e:
+        logger.warning(f"FearGreed: {e}")
+        return {'value': '50', 'yesterday': '50', 'last_week': '50'}
+
+
+# ── ENDPOINTS ─────────────────────────────────────────────────────────────────
 @app.route('/')
 def index():
-    """Serve o INDEX.HTML principal."""
     try:
-        with open(HTML_FILE, "r", encoding="utf-8") as f:
-            html_content = f.read()
-        return html_content, 200, {'Content-Type': 'text/html; charset=utf-8'}
+        return HTML_FILE.read_text(encoding='utf-8'), 200, {'Content-Type': 'text/html; charset=utf-8'}
     except FileNotFoundError:
-        return "<h1>❌ INDEX.HTML não encontrado</h1>", 404
+        return "<h1>INDEX.HTML não encontrado</h1>", 404
 
-# ── ROTA: API de Dados ─────────────────────────────────────────────────────────
+@app.route('/data.json')
+def data_json():
+    if not DATA_FILE.exists(): return jsonify({'error': 'data.json não encontrado'}), 404
+    return app.response_class(DATA_FILE.read_text(encoding='utf-8'), mimetype='application/json')
+
+@app.route('/sw.js')
+def service_worker():
+    return send_from_directory(str(BASE_DIR), 'sw.js', mimetype='application/javascript')
+
+@app.route('/manifest.json')
+def manifest():
+    return send_from_directory(str(BASE_DIR), 'manifest.json', mimetype='application/manifest+json')
+
+@app.route('/icons/<path:filename>')
+def icons(filename):
+    return send_from_directory(str(BASE_DIR / 'icons'), filename)
+
 @app.route('/api/data')
 def api_data():
-    """Devolve os dados do dashboard em JSON."""
-    data = get_dashboard_data()
+    return jsonify(get_dashboard_data()), 200
+
+@app.route('/api/prices')
+def api_prices():
+    data = cache_get('prices')
+    if data is None: data = fetch_prices(); cache_set('prices', data)
     return jsonify(data), 200
 
-# ── ROTA: Trigger Manual para Gerar Dados ──────────────────────────────────────
-@app.route('/api/refresh', methods=['POST'])
-def api_refresh():
-    """
-    Executa generate_data.py manualmente (útil para atualizar dados sem esperar cronjob).
-    Retorna status da execução.
-    """
-    try:
-        generate_script = BASE_DIR / "generate_data.py"
-        if not generate_script.exists():
-            return jsonify({"error": "generate_data.py não encontrado"}), 404
-        
-        # Executar script com timeout
-        result = subprocess.run(
-            [sys.executable, str(generate_script)],
-            cwd=str(BASE_DIR),
-            capture_output=True,
-            timeout=120,
-            text=True
-        )
-        
-        if result.returncode == 0:
-            data = get_dashboard_data()
-            return jsonify({
-                "status": "success",
-                "message": "Dados actualizados com sucesso",
-                "data": data
-            }), 200
-        else:
-            return jsonify({
-                "status": "error",
-                "message": "Script falhou",
-                "stderr": result.stderr[:500]
-            }), 500
-    
-    except subprocess.TimeoutExpired:
-        return jsonify({
-            "status": "error",
-            "message": "Script demorou demasiado (timeout 120s)"
-        }), 504
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+@app.route('/api/feargreed')
+def api_feargreed():
+    data = cache_get('feargreed')
+    if data is None: data = fetch_feargreed(); cache_set('feargreed', data)
+    return jsonify(data), 200
 
-# ── ROTA: Health Check ─────────────────────────────────────────────────────────
+@app.route('/api/news')
+def api_news():
+    data = cache_get('news')
+    if data is None: data = fetch_news(); cache_set('news', data)
+    return jsonify(data), 200
+
+@app.route('/api/btc-tick')
+def api_btc_tick():
+    """Ticker rápido BTC — usa cache de /api/prices (sem chamada extra)."""
+    cached = cache_get('prices')
+    if cached and cached.get('btc_usd'):
+        return jsonify({
+            'btc_usd':       cached['btc_usd'],
+            'btc_change_24h': cached.get('btc_change_24h'),
+            'btc_change_1h':  cached.get('btc_change_1h'),
+            'from_cache': True,
+        }), 200
+    # Cache vazia — buscar só o preço spot rapidamente
+    try:
+        r = requests.get('https://api.coinbase.com/v2/prices/BTC-USD/spot', timeout=5)
+        r.raise_for_status()
+        return jsonify({'btc_usd': float(r.json()['data']['amount']), 'btc_change_24h': None}), 200
+    except Exception:
+        return jsonify({'error': 'unavailable'}), 502
+
+@app.route('/api/agent-summary')
+def api_agent_summary():
+    cached = cache_get('agent_summary')
+    if cached: return jsonify(cached), 200
+    if not GROQ_API_KEY:
+        data = get_dashboard_data()
+        return jsonify({'summary': data.get('editorial', 'GROQ_API_KEY não configurada.'),
+                        'generated_at': data.get('updated', '--')}), 200
+    try:
+        summary = call_groq(
+            build_system(),
+            [{'role': 'user', 'content':
+              'Gera um resumo de 3-4 frases do estado actual do mercado Bitcoin. '
+              'Usa os dados em tempo real. Em português de Portugal.'}],
+            max_tokens=350)
+        result = {'summary': summary, 'generated_at': datetime.now().strftime('%H:%M')}
+        cache_set('agent_summary', result)
+        return jsonify(result), 200
+    except RuntimeError as e:
+        return jsonify({'summary': str(e), 'generated_at': '--'}), 503
+    except Exception as e:
+        logger.error(f"Agent summary: {e}")
+        return jsonify({'summary': 'Resumo indisponível.', 'generated_at': '--'}), 500
+
+@app.route('/api/agent-chat', methods=['POST'])
+def api_agent_chat():
+    if not GROQ_API_KEY:
+        return jsonify({'reply': 'Configura a variável GROQ_API_KEY no Render → Environment.'}), 200
+    body     = request.get_json(force=True, silent=True) or {}
+    messages = body.get('messages', [])
+    snapshot = body.get('snapshot', {})
+    sid      = body.get('session_id') or \
+               hashlib.md5((request.remote_addr or 'anon').encode()).hexdigest()[:12]
+    if not messages:
+        return jsonify({'reply': 'Sem mensagens.'}), 400
+    last = next((m['content'] for m in reversed(messages) if m['role'] == 'user'), None)
+    if last: db_save(sid, 'user', last); db_track(last)
+    full = db_history(sid, 10) + messages[-3:]
+    try:
+        reply = call_groq(build_system(snapshot), full, max_tokens=500)
+        db_save(sid, 'agent', reply)
+        return jsonify({'reply': reply, 'session_id': sid}), 200
+    except RuntimeError as e:
+        return jsonify({'reply': str(e)}), 503
+    except Exception as e:
+        logger.error(f"Agent chat: {e}")
+        return jsonify({'reply': 'Erro. Tenta novamente.'}), 500
+
 @app.route('/health')
 def health():
-    """Verifica se o servidor está ativo e data.json existe."""
-    data_exists = DATA_FILE.exists()
-    return jsonify({
-        "status": "ok",
-        "timestamp": datetime.now().isoformat(),
-        "data_available": data_exists
-    }), 200
+    return jsonify({'status': 'ok', 'timestamp': datetime.now().isoformat(),
+                    'data_available': DATA_FILE.exists()}), 200
 
-# ── ROTA: Ping / Keep-alive ────────────────────────────────────────────────────
 @app.route('/api/ping')
 def api_ping():
-    """Endpoint para UptimeRobot — mantém o serviço ativo e refresca dados se necessário."""
+    """Keep-alive para UptimeRobot — refresca dados se tiverem mais de 30 min."""
     data = get_dashboard_data()
-    updated = data.get("updated", "")
-
-    # Se dados têm mais de 30 min, atualizar automaticamente
+    updated = data.get('updated', '')
     needs_refresh = False
     try:
-        last = datetime.strptime(updated, "%d/%m/%Y %H:%M")
-        if (datetime.now() - last).total_seconds() > 1800:
-            needs_refresh = True
+        last = datetime.strptime(updated, '%d/%m/%Y %H:%M')
+        needs_refresh = (datetime.now() - last).total_seconds() > 1800
     except Exception:
         needs_refresh = True
-
     if needs_refresh:
+        import subprocess, sys
         try:
-            generate_script = BASE_DIR / "generate_data.py"
-            if generate_script.exists():
-                subprocess.Popen(
-                    [sys.executable, str(generate_script)],
-                    cwd=str(BASE_DIR),
-                    env={**os.environ}
-                )
-        except Exception:
-            pass
-
-    return jsonify({
-        "status": "ok",
-        "timestamp": datetime.now().isoformat(),
-        "data_updated": updated,
-        "refresh_triggered": needs_refresh
-    }), 200
-
+            gen = BASE_DIR / 'generate_data.py'
+            if gen.exists():
+                subprocess.Popen([sys.executable, str(gen)], cwd=str(BASE_DIR),
+                                 env={**os.environ})
+        except Exception: pass
+    return jsonify({'status': 'ok', 'timestamp': datetime.now().isoformat(),
+                    'data_updated': updated, 'refresh_triggered': needs_refresh}), 200
 
 @app.route('/api/config')
 def api_config():
-    """Devolve informações sobre a configuração (útil para debug)."""
-    return jsonify({
-        "groq_key_set": bool(GROQ_API_KEY),
-        "data_file_exists": DATA_FILE.exists(),
-        "html_file_exists": HTML_FILE.exists(),
-        "base_dir": str(BASE_DIR),
-        "python_version": sys.version.split()[0]
-    }), 200
+    return jsonify({'groq_key_set': bool(GROQ_API_KEY), 'groq_model': GROQ_MODEL,
+                    'data_file_exists': DATA_FILE.exists(),
+                    'db': db_stats()}), 200
 
-# ── ROTA: Preços ao Vivo ───────────────────────────────────────────────────────
-@app.route('/api/prices')
-def api_prices():
-    """Devolve preços ao vivo do Bitcoin e ativos relacionados."""
-    # Cache de 60 segundos — evitar rate-limit da CoinGecko
-    if _prices_cache["data"] and _prices_cache["timestamp"]:
-        age = (datetime.now() - _prices_cache["timestamp"]).total_seconds()
-        if age < 60:
-            cached = _prices_cache["data"].copy()
-            cached["from_cache"] = True
-            return jsonify(cached), 200
+@app.route('/api/stats')
+def api_stats():
+    return jsonify({**db_stats(), 'top_questions': db_top(10)}), 200
 
-    try:
-        prices_resp = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={
-                "ids": "bitcoin,ethereum,gold",
-                "vs_currencies": "usd,btc",
-                "include_24hr_change": "true",
-            },
-            timeout=10,
-        )
-        prices = prices_resp.json()
-
-        global_resp = requests.get(
-            "https://api.coingecko.com/api/v3/global",
-            timeout=10,
-        )
-        global_data = global_resp.json()
-
-        btc_usd = prices["bitcoin"]["usd"]
-        btc_change = prices["bitcoin"].get("usd_24h_change", 0.0)
-        eth_btc = prices["ethereum"]["btc"]
-        dominance = global_data["data"]["market_cap_percentage"]["btc"]
-
-        # Gold direto da mesma resposta
-        gold_usd = prices.get("gold", {}).get("usd")
-        if gold_usd and btc_usd:
-            gold_btc = gold_usd / btc_usd
-        else:
-            # Fallback: tentar cache, depois data.json, depois valor aproximado
-            if _prices_cache["data"] and _prices_cache["data"].get("gold_btc"):
-                gold_btc = _prices_cache["data"]["gold_btc"]
-            else:
-                try:
-                    data = get_dashboard_data()
-                    gold_str = str(data.get("gold", {}).get("btc", "0")).split()[0]
-                    gold_btc = float(gold_str)
-                except (ValueError, TypeError, IndexError):
-                    gold_btc = 2000.0 / btc_usd if btc_usd else 0.03  # ~$2000/oz fallback
-
-        # Crude oil — no free live API; use data.json fallback
-        crude_usd = 70.0
-        crude_btc = crude_usd / btc_usd if btc_usd else 0.0
-
-        now = datetime.now().strftime("%d/%m/%Y %H:%M")
-        result = {
-            "btc_usd": btc_usd,
-            "btc_change_24h": round(btc_change, 2),
-            "dominance": round(dominance, 2),
-            "eth_btc": round(eth_btc, 5),
-            "gold_btc": round(gold_btc, 5),
-            "crude_btc": round(crude_btc, 5),
-            "crude_usd": crude_usd,
-            "updated": now,
-        }
-        # Guardar na cache
-        _prices_cache["data"] = result
-        _prices_cache["timestamp"] = datetime.now()
-        return jsonify(result), 200
-
-    except Exception as e:
-        # Primeiro tentar a cache em memória (dados recentes do último fetch com sucesso)
-        if _prices_cache["data"]:
-            cached = _prices_cache["data"].copy()
-            cached["updated"] = datetime.now().strftime("%d/%m/%Y %H:%M")
-            cached["from_cache"] = True
-            return jsonify(cached), 200
-
-        # Se não há cache, fallback para data.json
-        try:
-            data = get_dashboard_data()
-            price_digits = re.sub(r'[^\d]', '', str(data.get("bitcoin", {}).get("price", "0")))
-            btc_usd = float(price_digits) if price_digits else 66000.0
-            btc_change_str = str(data.get("bitcoin", {}).get("change", "0")).replace("+", "").replace("%", "").replace(",", ".")
-            btc_change = float(btc_change_str) if btc_change_str else 0.0
-            return jsonify({
-                "btc_usd": btc_usd,
-                "btc_change_24h": btc_change,
-                "dominance": 56.3,
-                "eth_btc": 0.02929,
-                "gold_btc": 0.07877,
-                "crude_btc": 0.00102,
-                "crude_usd": 68.5,
-                "updated": datetime.now().strftime("%d/%m/%Y %H:%M"),
-            }), 200
-        except Exception:
-            return jsonify({"error": str(e)}), 502
-
-
-# ── ROTA: BTC Ticker Rápido ───────────────────────────────────────────────────
-@app.route('/api/btc-tick')
-def api_btc_tick():
-    """Preço BTC rápido para ticker. Coinbase como fonte principal (cache 10s)."""
-    # Servir da cache se ainda válida (TTL 10s)
-    if _btc_tick_cache["timestamp"]:
-        age = (datetime.now() - _btc_tick_cache["timestamp"]).total_seconds()
-        if age < 10 and _btc_tick_cache["price"] is not None:
-            return jsonify({
-                "btc_usd": _btc_tick_cache["price"],
-                "btc_change_24h": _btc_tick_cache["change"],
-                "from_cache": True,
-            }), 200
-
-    btc_usd = None
-    btc_change = None
-
-    # Fonte principal: Coinbase (~100 req/min, sem API key)
-    try:
-        resp = requests.get(
-            "https://api.coinbase.com/v2/prices/BTC-USD/spot",
-            timeout=5,
-        )
-        resp.raise_for_status()
-        btc_usd = float(resp.json()["data"]["amount"])
-    except Exception as e:
-        logger.warning(f"btc-tick Coinbase falhou: {e}")
-
-    # Variação 24h — usar cache de /api/prices se disponível (sem call extra)
-    if _prices_cache["data"] and _prices_cache["data"].get("btc_change_24h") is not None:
-        btc_change = _prices_cache["data"]["btc_change_24h"]
-
-    # Fallback: CoinGecko para preço (se Coinbase falhou)
-    if btc_usd is None:
-        try:
-            resp = requests.get(
-                "https://api.coingecko.com/api/v3/simple/price",
-                params={"ids": "bitcoin", "vs_currencies": "usd", "include_24hr_change": "true"},
-                timeout=5,
-            )
-            data = resp.json()
-            btc_usd = data["bitcoin"]["usd"]
-            if btc_change is None:
-                btc_change = data["bitcoin"].get("usd_24h_change", 0.0)
-        except Exception as e:
-            logger.warning(f"btc-tick CoinGecko falhou: {e}")
-
-    # Fallback final: _prices_cache
-    if btc_usd is None and _prices_cache["data"]:
-        btc_usd = _prices_cache["data"].get("btc_usd")
-        if btc_change is None:
-            btc_change = _prices_cache["data"].get("btc_change_24h", 0.0)
-
-    if btc_usd is None:
-        # Nenhuma fonte disponível
-        if _btc_tick_cache["price"] is not None:
-            return jsonify({
-                "btc_usd": _btc_tick_cache["price"],
-                "btc_change_24h": _btc_tick_cache["change"],
-                "from_cache": True,
-            }), 200
-        return jsonify({"error": "unavailable"}), 502
-
-    if btc_change is None:
-        btc_change = 0.0
-
-    # Actualizar cache do ticker
-    _btc_tick_cache["price"] = btc_usd
-    _btc_tick_cache["change"] = round(btc_change, 2)
-    _btc_tick_cache["timestamp"] = datetime.now()
-
-    # Actualizar também _prices_cache para consistência
-    if _prices_cache["data"]:
-        _prices_cache["data"]["btc_usd"] = btc_usd
-        _prices_cache["data"]["btc_change_24h"] = round(btc_change, 2)
-
-    return jsonify({"btc_usd": btc_usd, "btc_change_24h": round(btc_change, 2)}), 200
-
-
-# ── ROTA: Fear & Greed Index ───────────────────────────────────────────────────
-@app.route('/api/feargreed')
-def api_feargreed():
-    """Devolve o índice Fear & Greed do Bitcoin."""
-    try:
-        resp = requests.get(
-            "https://api.alternative.me/fng/?limit=7",
-            timeout=10,
-        )
-        fg_data = resp.json().get("data", [])
-        value = fg_data[0]["value"] if len(fg_data) > 0 else "50"
-        yesterday = fg_data[1]["value"] if len(fg_data) > 1 else value
-        last_week = fg_data[6]["value"] if len(fg_data) > 6 else value
-        return jsonify({
-            "value": value,
-            "yesterday": yesterday,
-            "last_week": last_week,
-        }), 200
-    except Exception as e:
-        return jsonify({"error": str(e), "value": "50", "yesterday": "50", "last_week": "50"}), 200
-
-
-# ── ROTA: Notícias ─────────────────────────────────────────────────────────────
-@app.route('/api/news')
-def api_news():
-    """Devolve notícias recentes de Bitcoin a partir de RSS."""
-    HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (compatible; BitcoinIntelligence/1.0; +https://github.com/nakmot0/SARDINHAS_bitcoin.INT)'
-    }
-    BULLISH_WORDS = ["bull", "surge", "rally", "high", "gain", "up", "rise", "record", "ath", "buy", "halving", "adoption"]
-    BEARISH_WORDS = ["bear", "crash", "drop", "down", "fall", "low", "sell", "dump", "fear", "hack", "ban", "risk"]
-
-    def classify(title):
-        t = title.lower()
-        b = sum(1 for w in BULLISH_WORDS if w in t)
-        n = sum(1 for w in BEARISH_WORDS if w in t)
-        if b > n:
-            return "bullish"
-        if n > b:
-            return "bearish"
-        return "neutral"
-
-    sources = []
-    try:
-        if SOURCES_FILE.exists():
-            for line in SOURCES_FILE.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    sources.append(line)
-    except Exception:
-        pass
-
-    items = []
-    for url in sources[:8]:  # limit sources to avoid slow response
-        try:
-            resp = requests.get(url, headers=HEADERS, timeout=10)
-            resp.raise_for_status()
-            feed = feedparser.parse(resp.content)
-            source_name = feed.feed.get("title", url.split("/")[2]) if feed.feed else url.split("/")[2]
-            for entry in feed.entries[:3]:
-                title = entry.get("title", "").strip()
-                if not title:
-                    continue
-                published = entry.get("published", "")
-                link = entry.get("link", "")
-                items.append({
-                    "title": title,
-                    "source": source_name,
-                    "date": published[:16] if published else "--",
-                    "sentiment": classify(title),
-                    "link": link,
-                })
-        except Exception as e:
-            logger.warning(f"Feed falhou: {url} — {e}")
-            continue
-
-    if not items:
-        items = [{"title": "Sem notícias disponíveis de momento", "source": "Sistema", "date": "--", "sentiment": "neutral", "link": ""}]
-
-    now = datetime.now().strftime("%H:%M")
-    return jsonify({"items": items[:20], "updated": now}), 200
-
-
-# ── ROTA: Resumo do Agente ─────────────────────────────────────────────────────
-@app.route('/api/agent-summary')
-def api_agent_summary():
-    """Gera um resumo de mercado em português com Groq AI."""
-    data = get_dashboard_data()
-
-    if not GROQ_API_KEY:
-        return jsonify({
-            "summary": data.get("editorial", "Agente indisponível — configura GROQ_API_KEY."),
-            "generated_at": data.get("updated", "--"),
-        }), 200
-
-    try:
-        context = (
-            f"Bitcoin: {data.get('bitcoin', {}).get('price', 'n/d')} "
-            f"({data.get('bitcoin', {}).get('change', 'n/d')} 24h), "
-            f"Dominância: {data.get('bitcoin', {}).get('dominance', 'n/d')}. "
-            f"ETH/BTC: {data.get('eth', {}).get('btc', 'n/d')}. "
-            f"Ouro/BTC: {data.get('gold', {}).get('btc', 'n/d')}. "
-            f"DXY: {data.get('dxy', {}).get('state', 'n/d')}. "
-            f"Dados de: {data.get('updated', '--')}."
-        )
-        prompt = (
-            "És um analista de mercado Bitcoin. Responde em português de Portugal. "
-            "Com base nos dados abaixo, escreve um parágrafo curto (3-4 frases) "
-            "de análise de mercado. Sem conselhos financeiros diretos.\n\n"
-            f"Dados: {context}"
-        )
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": GROQ_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.5,
-        }
-        resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=30)
-        resp.raise_for_status()
-        summary = resp.json()["choices"][0]["message"]["content"].strip()
-        now = datetime.now().strftime("%H:%M")
-        return jsonify({"summary": summary, "generated_at": now}), 200
-
-    except Exception as e:
-        return jsonify({
-            "summary": data.get("editorial", "Erro ao gerar resumo."),
-            "generated_at": data.get("updated", "--"),
-        }), 200
-
-
-# ── ROTA: Chat com o Agente ────────────────────────────────────────────────────
-@app.route('/api/agent-chat', methods=['POST'])
-def api_agent_chat():
-    """Chat interativo com o agente de análise Bitcoin."""
-    if not GROQ_API_KEY:
-        return jsonify({"reply": "Agente indisponível — configura a variável GROQ_API_KEY no servidor."}), 200
-
-    try:
-        body = request.get_json(force=True) or {}
-        messages = body.get("messages", [])
-        snapshot = body.get("snapshot", {})
-
-        system_prompt = (
-            "És um agente de análise de mercado com foco em Bitcoin. "
-            "Respondes em português de Portugal, de forma clara e profissional. "
-            "Evitas conselhos financeiros diretos. "
-            "Contexto atual do dashboard:\n"
-            f"- Preço BTC: {snapshot.get('price', 'n/d')}\n"
-            f"- Variação 24h: {snapshot.get('change', 'n/d')}\n"
-            f"- Dominância: {snapshot.get('dominance', 'n/d')}\n"
-            f"- ETH/BTC: {snapshot.get('ethBtc', 'n/d')}\n"
-            f"- Ouro/BTC: {snapshot.get('goldBtc', 'n/d')}\n"
-        )
-
-        groq_messages = [{"role": "system", "content": system_prompt}] + messages
-
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": GROQ_MODEL,
-            "messages": groq_messages,
-            "temperature": 0.6,
-        }
-        resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=30)
-        resp.raise_for_status()
-        reply = resp.json()["choices"][0]["message"]["content"].strip()
-        return jsonify({"reply": reply}), 200
-
-    except Exception as e:
-        return jsonify({"reply": f"Erro ao contactar o agente: {str(e)}"}), 200
-
-
-
-# ── ERRO 404 ───────────────────────────────────────────────────────────────────
 @app.errorhandler(404)
-def not_found(error):
-    return jsonify({"error": "Endpoint não encontrado"}), 404
-
-# ── ERRO 500 ───────────────────────────────────────────────────────────────────
+def not_found(e):   return jsonify({'error': 'Endpoint não encontrado'}), 404
 @app.errorhandler(500)
-def server_error(error):
-    return jsonify({"error": "Erro interno do servidor"}), 500
+def server_error(e): return jsonify({'error': 'Erro interno do servidor'}), 500
 
-# ── MAIN ───────────────────────────────────────────────────────────────────────
+
+# ── ARRANQUE ──────────────────────────────────────────────────────────────────
+def warm_cache():
+    logger.info("A pré-carregar cache...")
+    cache_set('prices',    fetch_prices())
+    cache_set('news',      fetch_news())
+    cache_set('feargreed', fetch_feargreed())
+    logger.info("Cache pronta.")
+
+db_init()
+threading.Thread(target=warm_cache, daemon=True).start()
+
 if __name__ == '__main__':
-    # Modo producao (debug=False para Render.com)
-    port = int(os.getenv('PORT', 5000))
+    port = int(os.environ.get('PORT', 5000))
+    logger.info(f"Bitcoin Intelligence · porta {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
