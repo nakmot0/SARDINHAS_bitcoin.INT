@@ -24,6 +24,12 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
+# Cache em memória para preços (evita dados estáticos quando CoinGecko faz rate-limit)
+_prices_cache = {
+    "data": None,
+    "timestamp": None
+}
+
 # ── HELPER: Ler data.json ──────────────────────────────────────────────────────
 def get_dashboard_data():
     """Lê data.json e devolve dict. Se não existir, devolve template vazio."""
@@ -170,7 +176,7 @@ def api_prices():
         prices_resp = requests.get(
             "https://api.coingecko.com/api/v3/simple/price",
             params={
-                "ids": "bitcoin,ethereum",
+                "ids": "bitcoin,ethereum,gold",
                 "vs_currencies": "usd,btc",
                 "include_24hr_change": "true",
             },
@@ -189,21 +195,11 @@ def api_prices():
         eth_btc = prices["ethereum"]["btc"]
         dominance = global_data["data"]["market_cap_percentage"]["btc"]
 
-        # Gold: try CoinGecko, fall back to data.json
-        gold_btc = None
-        try:
-            gold_resp = requests.get(
-                "https://api.coingecko.com/api/v3/simple/price",
-                params={"ids": "gold", "vs_currencies": "usd"},
-                timeout=8,
-            )
-            gold_usd = gold_resp.json().get("gold", {}).get("usd")
-            if gold_usd and btc_usd:
-                gold_btc = gold_usd / btc_usd
-        except Exception:
-            pass
-
-        if gold_btc is None:
+        # Gold direto da mesma resposta
+        gold_usd = prices.get("gold", {}).get("usd")
+        if gold_usd and btc_usd:
+            gold_btc = gold_usd / btc_usd
+        else:
             data = get_dashboard_data()
             try:
                 gold_btc = float(str(data.get("gold", {}).get("btc", "0")).split()[0])
@@ -215,7 +211,7 @@ def api_prices():
         crude_btc = crude_usd / btc_usd if btc_usd else 0.0
 
         now = datetime.now().strftime("%d/%m/%Y %H:%M")
-        return jsonify({
+        result = {
             "btc_usd": btc_usd,
             "btc_change_24h": round(btc_change, 2),
             "dominance": round(dominance, 2),
@@ -224,10 +220,21 @@ def api_prices():
             "crude_btc": round(crude_btc, 5),
             "crude_usd": crude_usd,
             "updated": now,
-        }), 200
+        }
+        # Guardar na cache
+        _prices_cache["data"] = result
+        _prices_cache["timestamp"] = datetime.now()
+        return jsonify(result), 200
 
     except Exception as e:
-        # Fallback to data.json
+        # Primeiro tentar a cache em memória (dados recentes do último fetch com sucesso)
+        if _prices_cache["data"]:
+            cached = _prices_cache["data"].copy()
+            cached["updated"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+            cached["from_cache"] = True
+            return jsonify(cached), 200
+
+        # Se não há cache, fallback para data.json
         try:
             data = get_dashboard_data()
             price_digits = re.sub(r'[^\d]', '', str(data.get("bitcoin", {}).get("price", "0")))
@@ -242,7 +249,7 @@ def api_prices():
                 "gold_btc": 0.07877,
                 "crude_btc": 0.00102,
                 "crude_usd": 68.5,
-                "updated": data.get("updated", "--"),
+                "updated": datetime.now().strftime("%d/%m/%Y %H:%M"),
             }), 200
         except Exception:
             return jsonify({"error": str(e)}), 502
