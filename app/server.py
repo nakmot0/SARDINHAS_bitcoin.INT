@@ -10,7 +10,7 @@ from flask import Flask, jsonify, request
 import requests
 import feedparser
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='.', static_url_path='')
@@ -304,6 +304,7 @@ def api_news():
     for url in sources[:8]:  # limit sources to avoid slow response
         try:
             resp = requests.get(url, headers=HEADERS, timeout=10)
+            resp.raise_for_status()
             feed = feedparser.parse(resp.content)
             source_name = feed.feed.get("title", url.split("/")[2]) if feed.feed else url.split("/")[2]
             for entry in feed.entries[:3]:

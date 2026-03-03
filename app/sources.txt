@@ -20,11 +20,11 @@ https://decrypt.co/feed
 
 # --- X/TWITTER (não tem RSS nativo — usa nitter como proxy gratuito)
 # Substitui USERNAME pelo handle sem @
-https://nitter.poast.org/AlexCryptoPT
-https://nitter.poast.org/saylor
-https://nitter.poast.org/APompliano
-https://nitter.poast.org/DocumentingBTC
-https://nitter.poast.org/BitcoinMagazine
-https://nitter.poast.org/CoinDesk
-https://nitter.poast.org/willywoo
-https://nitter.poast.org/tom_doerr
+https://nitter.poast.org/AlexCryptoPT/rss
+https://nitter.poast.org/saylor/rss
+https://nitter.poast.org/APompliano/rss
+https://nitter.poast.org/DocumentingBTC/rss
+https://nitter.poast.org/BitcoinMagazine/rss
+https://nitter.poast.org/CoinDesk/rss
+https://nitter.poast.org/willywoo/rss
+https://nitter.poast.org/tom_doerr/rss
