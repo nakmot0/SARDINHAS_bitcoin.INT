@@ -83,38 +83,52 @@ def fetch_market_data():
         print(f"Coinpaprika: {e}")
         result['dominance'] = 55.0
 
-    # Ouro — Kraken XAUUSD
+    # Ouro — CoinGecko tether-gold (XAUT = 1 troy oz ouro real)
     gold_usd = None
     try:
-        r = requests.get('https://api.kraken.com/0/public/Ticker?pair=XAUUSD',
-                         headers=H, timeout=10)
-        r.raise_for_status(); d = r.json().get('result', {})
-        key = next(iter(d), None)
-        if key: gold_usd = float(d[key]['c'][0])
-        print(f"Ouro (Kraken): ${gold_usd:.0f}")
+        r = requests.get(
+            'https://api.coingecko.com/api/v3/simple/price?ids=tether-gold&vs_currencies=usd',
+            headers=H, timeout=12)
+        r.raise_for_status()
+        gold_usd = r.json().get('tether-gold', {}).get('usd')
+        if gold_usd: print(f"Ouro (CoinGecko XAUT): ${gold_usd:.0f}")
     except Exception as e:
-        print(f"Kraken ouro: {e}")
+        print(f"CoinGecko XAUT: {e}")
 
+    # Fallback ouro: Coinpaprika XAUT
     if not gold_usd:
         try:
-            gold_usd = stooq_val('gc.f', 1500, 5000)
-            if gold_usd: print(f"Ouro (Stooq): ${gold_usd:.0f}")
+            r = requests.get('https://api.coinpaprika.com/v1/tickers/xaut-tether-gold',
+                             headers=H, timeout=10)
+            r.raise_for_status()
+            gold_usd = r.json().get('quotes', {}).get('USD', {}).get('price')
+            if gold_usd: print(f"Ouro (Coinpaprika): ${float(gold_usd):.0f}")
         except Exception as e:
-            print(f"Stooq ouro: {e}")
+            print(f"Coinpaprika XAUT: {e}")
 
     if gold_usd and result['btc_usd']:
-        result['gold_btc'] = round(gold_usd / result['btc_usd'], 6)
+        result['gold_btc'] = round(float(gold_usd) / result['btc_usd'], 6)
 
-    # Petróleo WTI — Stooq CL.F (real, não hardcoded)
+    # Petroleo WTI — EIA (API governamental gratuita, sem bloqueio)
+    crude_usd = None
     try:
-        crude_usd = stooq_val('cl.f', 40, 200)
-        if crude_usd:
-            result['crude_usd'] = crude_usd
-            if result['btc_usd']:
-                result['crude_btc'] = round(crude_usd / result['btc_usd'], 6)
-            print(f"WTI: ${crude_usd:.1f}")
+        r = requests.get(
+            'https://api.eia.gov/v2/petroleum/pri/spt/data/'
+            '?api_key=DEMO_KEY&frequency=daily&data[0]=value'
+            '&facets[series][]=RWTC&sort[0][column]=period'
+            '&sort[0][direction]=desc&length=1',
+            headers=H, timeout=12)
+        r.raise_for_status()
+        rows = r.json().get('response', {}).get('data', [])
+        if rows:
+            crude_usd = float(rows[0]['value'])
+            print(f"WTI (EIA): ${crude_usd:.1f}")
     except Exception as e:
-        print(f"Stooq WTI: {e}")
+        print(f"EIA WTI: {e}")
+
+    if crude_usd and result['btc_usd']:
+        result['crude_usd'] = crude_usd
+        result['crude_btc'] = round(crude_usd / result['btc_usd'], 6)
 
     if result['btc_usd'] is None:
         raise ValueError("Não foi possível obter preço BTC de nenhuma fonte.")
