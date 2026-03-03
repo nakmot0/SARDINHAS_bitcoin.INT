@@ -8,13 +8,7 @@ services:
     plan: free
     envVars:
       - key: GROQ_API_KEY
-        sync: false          # vais preencher manualmente no dashboard do Render
+        sync: false
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: RENDER_DISK_PATH
-        value: /data
-    disk:
-      name: btc-memory
-      mountPath: /data
-      sizeGB: 1              # 1GB grátis — guarda a memória do agente (SQLite)
 
