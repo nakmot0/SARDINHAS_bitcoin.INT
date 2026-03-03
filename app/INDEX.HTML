@@ -1043,7 +1043,7 @@
         document.getElementById('btc-price').textContent =
           '$' + d.btc_usd.toLocaleString('pt-PT', { maximumFractionDigits: 0 });
 
-      if (d.btc_change_24h !== null)
+      if (d.btc_change_24h !== null && d.btc_change_24h !== undefined)
         setBadge(document.getElementById('btc-badge'), d.btc_change_24h);
 
       if (d.dominance)
@@ -1063,7 +1063,12 @@
 
       document.getElementById('updated').textContent = d.updated ||
         new Date().toLocaleString('pt-PT', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
-    } catch(e) { console.warn('Preços falharam:', e); }
+    } catch(e) {
+      console.warn('Preços falharam:', e);
+      // Mesmo quando falha, atualizar timestamp para mostrar que tentou
+      document.getElementById('updated').textContent =
+        new Date().toLocaleString('pt-PT', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+    }
   }
 
   // ── DATA.JSON ──
