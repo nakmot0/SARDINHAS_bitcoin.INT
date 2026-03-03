@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 import re
 import subprocess
 import sys
@@ -8,6 +9,9 @@ from datetime import datetime
 from flask import Flask, jsonify, request
 import requests
 import feedparser
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 
@@ -111,7 +115,42 @@ def health():
         "data_available": data_exists
     }), 200
 
-# ── ROTA: Status da Configuração ───────────────────────────────────────────────
+# ── ROTA: Ping / Keep-alive ────────────────────────────────────────────────────
+@app.route('/api/ping')
+def api_ping():
+    """Endpoint para UptimeRobot — mantém o serviço ativo e refresca dados se necessário."""
+    data = get_dashboard_data()
+    updated = data.get("updated", "")
+
+    # Se dados têm mais de 30 min, atualizar automaticamente
+    needs_refresh = False
+    try:
+        last = datetime.strptime(updated, "%d/%m/%Y %H:%M")
+        if (datetime.now() - last).total_seconds() > 1800:
+            needs_refresh = True
+    except Exception:
+        needs_refresh = True
+
+    if needs_refresh:
+        try:
+            generate_script = BASE_DIR / "generate_data.py"
+            if generate_script.exists():
+                subprocess.Popen(
+                    [sys.executable, str(generate_script)],
+                    cwd=str(BASE_DIR),
+                    env={**os.environ}
+                )
+        except Exception:
+            pass
+
+    return jsonify({
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "data_updated": updated,
+        "refresh_triggered": needs_refresh
+    }), 200
+
+
 @app.route('/api/config')
 def api_config():
     """Devolve informações sobre a configuração (útil para debug)."""
@@ -235,6 +274,9 @@ def api_feargreed():
 @app.route('/api/news')
 def api_news():
     """Devolve notícias recentes de Bitcoin a partir de RSS."""
+    HEADERS = {
+        'User-Agent': 'Mozilla/5.0 (compatible; BitcoinIntelligence/1.0; +https://github.com/nakmot0/SARDINHAS_bitcoin.INT)'
+    }
     BULLISH_WORDS = ["bull", "surge", "rally", "high", "gain", "up", "rise", "record", "ath", "buy", "halving", "adoption"]
     BEARISH_WORDS = ["bear", "crash", "drop", "down", "fall", "low", "sell", "dump", "fear", "hack", "ban", "risk"]
 
@@ -261,21 +303,28 @@ def api_news():
     items = []
     for url in sources[:8]:  # limit sources to avoid slow response
         try:
-            feed = feedparser.parse(url)
+            resp = requests.get(url, headers=HEADERS, timeout=10)
+            feed = feedparser.parse(resp.content)
             source_name = feed.feed.get("title", url.split("/")[2]) if feed.feed else url.split("/")[2]
             for entry in feed.entries[:3]:
                 title = entry.get("title", "").strip()
                 if not title:
                     continue
                 published = entry.get("published", "")
+                link = entry.get("link", "")
                 items.append({
                     "title": title,
                     "source": source_name,
-                    "time": published[:16] if published else "--",
-                    "tag": classify(title),
+                    "date": published[:16] if published else "--",
+                    "sentiment": classify(title),
+                    "link": link,
                 })
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Feed falhou: {url} — {e}")
             continue
+
+    if not items:
+        items = [{"title": "Sem notícias disponíveis de momento", "source": "Sistema", "date": "--", "sentiment": "neutral", "link": ""}]
 
     now = datetime.now().strftime("%H:%M")
     return jsonify({"items": items[:20], "updated": now}), 200

@@ -13,8 +13,10 @@ https://blog.bitmex.com/feed/
 https://www.theblock.co/rss.xml
 
 # --- MACRO / MERCADOS ---
-https://feeds.bloomberg.com/markets/news.rss
-https://www.zerohedge.com/fullrss2.xml
+# https://feeds.bloomberg.com/markets/news.rss  # requer autenticação — removido
+# https://www.zerohedge.com/fullrss2.xml        # bloqueia bots — removido
+https://cryptonews.com/news/feed/
+https://decrypt.co/feed
 
 # --- X/TWITTER (não tem RSS nativo — usa nitter como proxy gratuito)
 # Substitui USERNAME pelo handle sem @
