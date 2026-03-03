@@ -32,14 +32,18 @@ def fetch_market_data():
     eth_btc = prices["ethereum"]["btc"]
     dominance = global_data["data"]["market_cap_percentage"]["btc"]
 
-   # Ouro via Tether Gold (XAUT) em USD → BTC
-   gold_usd_per_oz = 1900.0  # fallback
-   try:
-   gold_usd_per_oz = prices["tether-gold"]["usd"]
-   except Exception:
-    pass
-
-   gold_btc = gold_usd_per_oz / btc_usd if btc_usd else 0.0
+    # Gold: ~1 troy oz in USD / BTC price
+    gold_usd_per_oz = 1900.0  # fallback
+    try:
+        gold_resp = requests.get(
+            "https://api.coingecko.com/api/v3/simple/price",
+            params={"ids": "tether-gold", "vs_currencies": "usd"},
+            timeout=10,
+        ).json()
+        gold_usd_per_oz = gold_resp.get("tether-gold", {}).get("usd", gold_usd_per_oz)
+    except Exception:
+        pass
+    gold_btc = gold_usd_per_oz / btc_usd if btc_usd else 0.0
 
     # Crude oil fallback (no free live API without key)
     crude_usd = 70.0
