@@ -15,7 +15,7 @@ def fetch_market_data():
     prices = requests.get(
         "https://api.coingecko.com/api/v3/simple/price",
         params={
-            "ids": "bitcoin,ethereum,gold",
+            "ids": "bitcoin,ethereum,tether-gold",
             "vs_currencies": "usd,btc",
             "include_24hr_change": "true",
         },
@@ -37,10 +37,10 @@ def fetch_market_data():
     try:
         gold_resp = requests.get(
             "https://api.coingecko.com/api/v3/simple/price",
-            params={"ids": "gold", "vs_currencies": "usd"},
+            params={"ids": "tether-gold", "vs_currencies": "usd"},
             timeout=10,
         ).json()
-        gold_usd_per_oz = gold_resp.get("gold", {}).get("usd", gold_usd_per_oz)
+        gold_usd_per_oz = gold_resp.get("tether-gold", {}).get("usd", gold_usd_per_oz)
     except Exception:
         pass
     gold_btc = gold_usd_per_oz / btc_usd if btc_usd else 0.0
@@ -54,7 +54,7 @@ def fetch_market_data():
         "btc_change_24h": btc_change,
         "dominance": dominance,
         "eth_btc": eth_btc,
-        "gold_btc": gold_btc,
+        "tether-gold_btc": tether-gold_btc,
         "crude_btc": crude_btc,
         "crude_usd": crude_usd,
     }
