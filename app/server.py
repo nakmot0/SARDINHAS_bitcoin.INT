@@ -228,41 +228,72 @@ def fetch_prices():
     except Exception as e:
         logger.warning(f"Coinpaprika: {e}")
 
-    # ── Ouro: Kraken XAUUSD ───────────────────────────────────────────────────
+    # ── Ouro: CoinGecko tether-gold (XAUT) ───────────────────────────────────
+    # XAUT é 1 troy oz de ouro tokenizado — preço = preço real do ouro
     gold_usd = None
     try:
-        r = requests.get('https://api.kraken.com/0/public/Ticker?pair=XAUUSD',
-                         headers=H, timeout=10)
-        r.raise_for_status(); d = r.json().get('result', {})
-        key = next(iter(d), None)
-        if key: gold_usd = float(d[key]['c'][0])
-        logger.info(f"Ouro (Kraken): ${gold_usd:.0f}")
+        r = requests.get(
+            'https://api.coingecko.com/api/v3/simple/price'
+            '?ids=tether-gold&vs_currencies=usd',
+            headers=H, timeout=12)
+        r.raise_for_status()
+        gold_usd = r.json().get('tether-gold', {}).get('usd')
+        if gold_usd:
+            logger.info(f"Ouro (CoinGecko XAUT): ${gold_usd:.0f}")
     except Exception as e:
-        logger.warning(f"Kraken ouro: {e}")
+        logger.warning(f"CoinGecko XAUT: {e}")
 
-    # Fallback ouro: Stooq GC.F
+    # Fallback ouro: Coinpaprika XAU-gold
     if not gold_usd:
         try:
-            gold_usd = stooq_val('gc.f', 1500, 5000)
-            if gold_usd: logger.info(f"Ouro (Stooq): ${gold_usd:.0f}")
+            r = requests.get('https://api.coinpaprika.com/v1/tickers/xaut-tether-gold',
+                             headers=H, timeout=10)
+            r.raise_for_status()
+            gold_usd = r.json().get('quotes', {}).get('USD', {}).get('price')
+            if gold_usd:
+                logger.info(f"Ouro (Coinpaprika XAUT): ${gold_usd:.0f}")
         except Exception as e:
-            logger.warning(f"Stooq ouro: {e}")
+            logger.warning(f"Coinpaprika XAUT: {e}")
 
     if gold_usd and result['btc_usd']:
-        result['gold_btc'] = round(gold_usd / result['btc_usd'], 6)
+        result['gold_btc'] = round(float(gold_usd) / result['btc_usd'], 6)
 
-    # ── Petróleo WTI: Stooq CL.F ─────────────────────────────────────────────
+    # ── Petróleo WTI: EIA (US Energy Information Administration) ─────────────
+    # API governamental gratuita, sem API key necessária com DEMO_KEY
+    crude_usd = None
     try:
-        crude_usd = stooq_val('cl.f', 40, 200)
-        if crude_usd:
-            result['crude_usd'] = crude_usd
-            if result['btc_usd']:
-                result['crude_btc'] = round(crude_usd / result['btc_usd'], 6)
-            logger.info(f"WTI: ${crude_usd:.1f}")
-        else:
-            logger.info("WTI: N/D (mercado fechado)")
+        r = requests.get(
+            'https://api.eia.gov/v2/petroleum/pri/spt/data/'
+            '?api_key=DEMO_KEY&frequency=daily&data[0]=value'
+            '&facets[series][]=RWTC&sort[0][column]=period'
+            '&sort[0][direction]=desc&length=1',
+            headers=H, timeout=12)
+        r.raise_for_status()
+        rows = r.json().get('response', {}).get('data', [])
+        if rows:
+            crude_usd = float(rows[0]['value'])
+            logger.info(f"WTI (EIA): ${crude_usd:.1f}")
     except Exception as e:
-        logger.warning(f"Stooq WTI: {e}")
+        logger.warning(f"EIA WTI: {e}")
+
+    # Fallback WTI: Coinpaprika USO (ETF petróleo)
+    if not crude_usd:
+        try:
+            # Usar preço de referência do crude via open data
+            r = requests.get(
+                'https://api.coinpaprika.com/v1/global',
+                headers=H, timeout=8)
+            # Coinpaprika não tem WTI — usar valor do cache se existir
+            cached = cache_get('prices')
+            if cached and cached.get('crude_usd'):
+                crude_usd = cached['crude_usd']
+                logger.info(f"WTI (cache): ${crude_usd:.1f}")
+        except Exception as e:
+            logger.warning(f"WTI fallback: {e}")
+
+    if crude_usd and result['btc_usd']:
+        result['crude_usd'] = crude_usd
+        result['crude_btc'] = round(crude_usd / result['btc_usd'], 6)
 
     result['updated'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
     return result
