@@ -1129,8 +1129,13 @@
   async function loadNews() {
     try {
       const r = await fetch('/api/news');
-      allArticles = await r.json();
-      if (!allArticles.length) return;
+      const data = await r.json();
+      allArticles = data.items || [];
+      if (!allArticles.length) {
+        document.getElementById('flip-rows').innerHTML = '<div class="flip-row"><div><div class="flip-headline">Sem notícias disponíveis de momento</div></div></div>';
+        document.getElementById('news-updated').textContent = 'indisponível';
+        return;
+      }
 
       flipIndex = 0;
       renderFlipRows(0);
