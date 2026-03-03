@@ -1171,6 +1171,9 @@
       loadAnalysis();
       loadFearGreed();
       loadNews();
+      const now = new Date();
+      const ts = now.toLocaleString('pt-PT', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+      document.getElementById('updated').textContent = ts;
     }
     // Agente IA refresca a cada 5 minutos (300 segundos) para não sobrecarregar Groq
     if (agentTick >= 300) {
