@@ -242,7 +242,7 @@ def api_prices():
                 "gold_btc": 0.07877,
                 "crude_btc": 0.00102,
                 "crude_usd": 68.5,
-                "updated": data.get("updated", "--"),
+                "updated": datetime.now().strftime("%d/%m/%Y %H:%M"),
             }), 200
         except Exception:
             return jsonify({"error": str(e)}), 502
