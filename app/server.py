@@ -200,11 +200,16 @@ def api_prices():
         if gold_usd and btc_usd:
             gold_btc = gold_usd / btc_usd
         else:
-            data = get_dashboard_data()
-            try:
-                gold_btc = float(str(data.get("gold", {}).get("btc", "0")).split()[0])
-            except (ValueError, TypeError):
-                gold_btc = 0.0
+            # Fallback: tentar cache, depois data.json, depois valor aproximado
+            if _prices_cache["data"] and _prices_cache["data"].get("gold_btc"):
+                gold_btc = _prices_cache["data"]["gold_btc"]
+            else:
+                try:
+                    data = get_dashboard_data()
+                    gold_str = str(data.get("gold", {}).get("btc", "0")).split()[0]
+                    gold_btc = float(gold_str)
+                except (ValueError, TypeError, IndexError):
+                    gold_btc = 2000.0 / btc_usd if btc_usd else 0.03  # ~$2000/oz fallback
 
         # Crude oil — no free live API; use data.json fallback
         crude_usd = 70.0
@@ -253,6 +258,34 @@ def api_prices():
             }), 200
         except Exception:
             return jsonify({"error": str(e)}), 502
+
+
+# ── ROTA: BTC Ticker Rápido ───────────────────────────────────────────────────
+@app.route('/api/btc-tick')
+def api_btc_tick():
+    """Preço BTC rápido para ticker de 2 segundos."""
+    try:
+        resp = requests.get(
+            "https://api.coingecko.com/api/v3/simple/price",
+            params={"ids": "bitcoin", "vs_currencies": "usd", "include_24hr_change": "true"},
+            timeout=5,
+        )
+        data = resp.json()
+        btc_usd = data["bitcoin"]["usd"]
+        btc_change = data["bitcoin"].get("usd_24h_change", 0.0)
+        # Atualizar cache também
+        if _prices_cache["data"]:
+            _prices_cache["data"]["btc_usd"] = btc_usd
+            _prices_cache["data"]["btc_change_24h"] = round(btc_change, 2)
+        return jsonify({"btc_usd": btc_usd, "btc_change_24h": round(btc_change, 2)}), 200
+    except Exception as e:
+        logger.warning(f"btc-tick falhou: {e}")
+        if _prices_cache["data"]:
+            return jsonify({
+                "btc_usd": _prices_cache["data"].get("btc_usd", 0),
+                "btc_change_24h": _prices_cache["data"].get("btc_change_24h", 0.0),
+            }), 200
+        return jsonify({"error": "unavailable"}), 502
 
 
 # ── ROTA: Fear & Greed Index ───────────────────────────────────────────────────
