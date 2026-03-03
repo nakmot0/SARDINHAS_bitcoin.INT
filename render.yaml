@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: bitcoin-intelligence
+    runtime: python
+    rootDir: app
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    plan: free
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false          # vais preencher manualmente no dashboard do Render
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: RENDER_DISK_PATH
+        value: /data
+    disk:
+      name: btc-memory
+      mountPath: /data
+      sizeGB: 1              # 1GB grátis — guarda a memória do agente (SQLite)
+

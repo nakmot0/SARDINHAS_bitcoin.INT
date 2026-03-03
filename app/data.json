@@ -1,0 +1,23 @@
+{
+  "updated": "03/03/2026 10:02",
+  "bitcoin": {
+    "price": "$66.519",
+    "change": "+0,60%",
+    "dominance": "56.3%",
+    "dominance_trend": "Em subida, favorece acumulação de BTC",
+    "summary": "Bitcoin está em subida e pode ser um bom momento para acumular."
+  },
+  "gold": {
+    "btc": "0.07877 BTC",
+    "trend": "Ouro face ao BTC mantém-se."
+  },
+  "eth": {
+    "btc": "0.02929 BTC",
+    "trend": "ETH perde força face ao BTC."
+  },
+  "dxy": {
+    "state": "Estável",
+    "summary": "O dólar americano está estável, mas pode ser afetado pelas mudanças econômicas."
+  },
+  "editorial": "Os mercados de criptomoedas estão em um momento de grande volatilidade, com Bitcoin sendo uma das principais moedas de referência. O BTC está em subida atualmente, mas pode sofrer uma reversão em breve. Por outro lado, o ouro e o ETH também são importantes moedas de carga de valor que podem ser acumuladas dependendo da situação. Um investidor precisa ser atento aos desafios e oportunidades desse mercado complexo, mas também pode se beneficiar da alta volatilidade se tiver a capacidade de levar riscos. Por isso, é importante acumular BTC somente quando a situação parecer favorável, e considerar outras moedas de carga de valor se necessário."
+}

@@ -1,0 +1,28 @@
+# FONTES DE NOTÍCIAS — Bitcoin Intelligence
+# Uma URL por linha. Linhas com # são ignoradas.
+# Adiciona ou remove fontes à vontade e reinicia o server.py.
+#
+# FONTES RECOMENDADAS (RSS gratuito, sem API key):
+# ─────────────────────────────────────────────────
+
+# --- CRIPTO / BITCOIN ---
+https://www.coindesk.com/arc/outboundfeeds/rss/
+https://cointelegraph.com/rss
+https://bitcoinmagazine.com/feed
+https://blog.bitmex.com/feed/
+https://www.theblock.co/rss.xml
+
+# --- MACRO / MERCADOS ---
+https://feeds.bloomberg.com/markets/news.rss
+https://www.zerohedge.com/fullrss2.xml
+
+# --- X/TWITTER (não tem RSS nativo — usa nitter como proxy gratuito)
+# Substitui USERNAME pelo handle sem @
+https://nitter.poast.org/AlexCryptoPT
+https://nitter.poast.org/saylor
+https://nitter.poast.org/APompliano
+https://nitter.poast.org/DocumentingBTC
+https://nitter.poast.org/BitcoinMagazine
+https://nitter.poast.org/CoinDesk
+https://nitter.poast.org/willywoo
+https://nitter.poast.org/tom_doerr
