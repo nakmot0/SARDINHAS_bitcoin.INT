@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <!-- PWA: viewport optimizado para Xiaomi 15T Pro (1220x2712) e iPad -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>Bitcoin Intelligence</title>
 
   <!-- PWA Manifest -->
@@ -31,23 +34,20 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Roboto+Condensed:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@300;400;700&display=swap" rel="stylesheet">
 
   <style>
     :root {
-      --bg:       #080a0f;
-      --surface:  #0d1018;
-      --card:     #111520;
-      --border:   #1e2435;
-      --text:     #dde3f0;
-      --muted:    #5a6480;
-      --faint:    #2a3050;
-      --btc:      #f7931a;
-      --btc-dim:  rgba(247,147,26,0.12);
-      --green:    #22d67a;
-      --red:      #f0455a;
-      --blue:     #3d8eff;
-      --yellow:   #f5c542;
+      --bg:       #000000;
+      --card:     #0e0e0e;
+      --border:   rgba(255,255,255,0.10);
+      --text:     #f0f0f0;
+      --muted:    #888;
+      --faint:    rgba(255,255,255,0.12);
+      --btc:      #ff9f1a;
+      --btc-dim:  rgba(255,159,26,0.10);
+      --green:    #4ade80;
+      --red:      #f87171;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -56,32 +56,19 @@
       background: var(--bg);
       color: var(--text);
       font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 300;
       min-height: 100vh;
       overflow-x: hidden;
-    }
-
-    /* Background grid */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image:
-        linear-gradient(var(--border) 1px, transparent 1px),
-        linear-gradient(90deg, var(--border) 1px, transparent 1px);
-      background-size: 40px 40px;
-      opacity: 0.3;
-      pointer-events: none;
-      z-index: 0;
+      -webkit-font-smoothing: antialiased;
     }
 
     .wrap {
       position: relative;
       z-index: 1;
-      max-width: 1200px;
+      max-width: 1080px;
       margin: 0 auto;
-      /* safe-area: respeita notch/punch-hole no Xiaomi e iPhone */
-      padding: 40px max(24px, env(safe-area-inset-right)) 60px max(24px, env(safe-area-inset-left));
-      padding-top: max(40px, env(safe-area-inset-top));
+      padding: 48px max(20px, env(safe-area-inset-right)) 60px max(20px, env(safe-area-inset-left));
+      padding-top: max(48px, env(safe-area-inset-top));
       padding-bottom: max(60px, env(safe-area-inset-bottom));
     }
 
@@ -90,34 +77,37 @@
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      margin-bottom: 36px;
-      padding-bottom: 24px;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
       border-bottom: 1px solid var(--border);
     }
 
     .header-left h1 {
-      font-size: clamp(22px, 4vw, 36px);
-      font-weight: 800;
-      letter-spacing: -0.5px;
+      font-size: clamp(20px, 3.5vw, 30px);
+      font-weight: 300;
+      letter-spacing: 1px;
       color: #fff;
+      text-transform: uppercase;
     }
 
-    .header-left h1 span { color: var(--btc); }
+    .header-left h1 span { color: var(--btc); font-weight: 400; }
 
     .header-right {
       text-align: right;
-      font-family: 'Space Mono', monospace;
+      font-family: 'Roboto Condensed', sans-serif;
       font-size: 11px;
+      font-weight: 300;
       color: var(--muted);
       line-height: 1.8;
+      letter-spacing: 0.5px;
     }
 
     .live-dot {
       display: inline-block;
-      width: 7px; height: 7px;
+      width: 6px; height: 6px;
       border-radius: 50%;
-      background: var(--green);
-      box-shadow: 0 0 8px var(--green);
+      background: var(--btc);
+      box-shadow: 0 0 6px var(--btc);
       animation: pulse 2s ease-in-out infinite;
       margin-right: 5px;
       vertical-align: middle;
@@ -132,112 +122,126 @@
     .hero {
       background: var(--card);
       border: 1px solid var(--border);
-      border-top: 3px solid var(--btc);
-      border-radius: 16px;
-      padding: 32px;
-      margin-bottom: 20px;
+      border-radius: 2px;
+      padding: 32px 36px;
+      margin-bottom: 16px;
       display: grid;
       grid-template-columns: 1fr auto;
       gap: 24px;
       align-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #hero-sparkline {
+      position: absolute;
+      inset: 0;
+      width: 100% !important;
+      height: 100% !important;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .hero > *:not(#hero-sparkline) {
+      position: relative;
+      z-index: 1;
     }
 
     .hero-price {
       font-family: 'Roboto Condensed', sans-serif;
-      font-size: clamp(36px, 7vw, 68px);
-      font-weight: 700;
-      color: var(--btc);
+      font-size: clamp(40px, 7vw, 72px);
+      font-weight: 300;
+      color: #fff;
       letter-spacing: -1px;
       line-height: 1;
       transition: color 0.3s ease;
     }
     .price-flash {
-      color: #fff !important;
-      transition: color 0.3s ease;
+      color: var(--btc) !important;
+      text-shadow: 0 0 18px rgba(255,159,26,0.5);
+      transition: color 0.25s ease, text-shadow 0.25s ease;
     }
 
     .hero-label {
-      font-size: 11px;
+      font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 2px;
+      letter-spacing: 3px;
       color: var(--muted);
       margin-bottom: 8px;
+      font-weight: 400;
     }
 
     .badge {
       display: inline-block;
-      font-family: 'Space Mono', monospace;
-      font-size: 14px;
-      font-weight: 700;
-      padding: 4px 12px;
-      border-radius: 6px;
+      font-family: 'Roboto Condensed', sans-serif;
+      font-size: 13px;
+      font-weight: 400;
+      padding: 3px 10px;
+      border-radius: 2px;
       margin-top: 10px;
     }
 
-    .badge.up   { background: rgba(34,214,122,0.15); color: var(--green); border: 1px solid rgba(34,214,122,0.3); }
-    .badge.down { background: rgba(240,69,90,0.15);  color: var(--red);   border: 1px solid rgba(240,69,90,0.3); }
-    .badge.neu  { background: rgba(90,100,128,0.2);  color: var(--muted); border: 1px solid var(--faint); }
+    .badge.up   { background: rgba(74,222,128,0.08); color: var(--green); }
+    .badge.down { background: rgba(248,113,113,0.08); color: var(--red); }
+    .badge.neu  { background: var(--faint); color: var(--muted); }
 
     .hero-stats {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 12px;
       text-align: right;
     }
 
     .stat-item .stat-val {
       font-family: 'Roboto Condensed', sans-serif;
-      font-size: 34px;
-      font-weight: 700;
+      font-size: 30px;
+      font-weight: 300;
       color: #fff;
       line-height: 1;
     }
 
     .stat-item .stat-lbl {
-      font-size: 11px;
+      font-size: 9px;
       text-transform: uppercase;
-      letter-spacing: 1.5px;
+      letter-spacing: 2px;
       color: var(--muted);
       margin-top: 4px;
+      font-weight: 400;
     }
 
     .hero-summary {
       grid-column: 1 / -1;
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--text);
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
+      font-size: 13px;
+      font-weight: 300;
+      color: var(--muted);
+      letter-spacing: 0.3px;
       border-top: 1px solid var(--border);
       padding-top: 16px;
-      line-height: 1.6;
+      line-height: 1.7;
+      overflow: hidden;
     }
 
     /* ── GRID ── */
     .grid-3 {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-      margin-bottom: 20px;
+      gap: 12px;
+      margin-bottom: 16px;
     }
 
     .card {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 22px 24px;
-      transition: border-color 0.2s;
+      border-radius: 2px;
+      padding: 20px 24px;
     }
 
-    .card:hover { border-color: var(--faint); }
-
     .card-title {
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 9px;
+      font-weight: 400;
       text-transform: uppercase;
-      letter-spacing: 2px;
+      letter-spacing: 3px;
       color: var(--muted);
-      margin-bottom: 14px;
+      margin-bottom: 12px;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -246,64 +250,35 @@
     .card-title::before {
       content: '';
       display: block;
-      width: 4px; height: 4px;
+      width: 3px; height: 3px;
       border-radius: 50%;
       background: var(--btc);
     }
 
     .card-val {
       font-family: 'Roboto Condensed', sans-serif;
-      font-size: 28px;
-      font-weight: 700;
+      font-size: 26px;
+      font-weight: 300;
       color: #fff;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     .card-desc {
-      font-size: 11px;
-      font-weight: 600;
+      font-size: 10px;
+      font-weight: 300;
       color: var(--muted);
       line-height: 1.5;
       text-transform: uppercase;
-      letter-spacing: 0.8px;
-    }
-
-    /* ── DXY STATE COLOUR ── */
-    .state-forte  { color: var(--red); }
-    .state-fraco  { color: var(--green); }
-    .state-estavel { color: var(--yellow); }
-
-    /* ── EDITORIAL ── */
-    .editorial {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-left: 4px solid var(--blue);
-      border-radius: 14px;
-      padding: 28px 32px;
-      margin-bottom: 20px;
-    }
-
-    .editorial-title {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 2px;
-      color: var(--blue);
-      margin-bottom: 14px;
-    }
-
-    .editorial p {
-      font-size: 17px;
-      line-height: 1.8;
-      color: var(--text);
+      letter-spacing: 1px;
     }
 
     /* ── FEAR & GREED ── */
     .fg-wrap {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 2px;
       padding: 20px 24px;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
     }
 
     .fg-top {
@@ -321,41 +296,43 @@
 
     .fg-number {
       font-family: 'Roboto Condensed', sans-serif;
-      font-size: 52px;
-      font-weight: 700;
+      font-size: 48px;
+      font-weight: 300;
       line-height: 1;
     }
 
     .fg-label {
-      font-size: 18px;
-      font-weight: 600;
+      font-size: 16px;
+      font-weight: 300;
+      color: var(--muted);
     }
 
     .fg-history {
-      font-size: 11px;
+      font-size: 10px;
       color: var(--muted);
-      font-family: 'Space Mono', monospace;
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 300;
       text-align: right;
       line-height: 1.8;
     }
 
     .fg-bar-track {
-      height: 10px;
-      border-radius: 6px;
+      height: 4px;
+      border-radius: 2px;
       background: linear-gradient(90deg,
-        #e63946 0%, #e07b39 25%, #f5c542 50%, #8bc34a 75%, #22d67a 100%);
+        #f87171 0%, #fb923c 25%, #fbbf24 50%, #a3e635 75%, #4ade80 100%);
       position: relative;
       margin-bottom: 6px;
     }
 
     .fg-needle {
       position: absolute;
-      top: -4px;
-      width: 18px; height: 18px;
+      top: -6px;
+      width: 16px; height: 16px;
       border-radius: 50%;
       background: #fff;
-      border: 3px solid var(--bg);
-      box-shadow: 0 0 6px rgba(0,0,0,0.5);
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 8px rgba(247,147,26,0.3);
       transform: translateX(-50%);
       transition: left 1s ease;
     }
@@ -363,110 +340,200 @@
     .fg-bar-labels {
       display: flex;
       justify-content: space-between;
-      font-size: 9px;
+      font-size: 8px;
       color: var(--muted);
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-top: 4px;
+      letter-spacing: 1px;
+      margin-top: 6px;
+      font-weight: 400;
     }
 
-    /* ── GRÁFICO CICLOS ── */
-    .cycles-chart-wrap {
+    /* ── GRÁFICO TABS ── */
+    .chart-block {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 20px 24px 12px;
-      margin-top: 16px;
-    }
-
-    .cycles-legend {
-      display: flex;
-      gap: 20px;
-      flex-wrap: wrap;
-      margin-bottom: 10px;
-    }
-
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      color: var(--muted);
-    }
-
-    .legend-dot {
-      width: 10px; height: 3px;
       border-radius: 2px;
+      padding: 0;
+      margin-top: 12px;
+      overflow: hidden;
     }
 
-    /* ── HALVING SECTION ── */
-    .halving-bar-wrap {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 24px;
-      margin-bottom: 20px;
-    }
-
-    .halving-header {
+    .chart-tabs {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border);
     }
 
-    .halving-title {
+    .chart-tab {
+      flex: 1;
+      padding: 14px 8px;
+      font-family: 'Roboto Condensed', sans-serif;
       font-size: 10px;
+      font-weight: 400;
       text-transform: uppercase;
       letter-spacing: 2px;
       color: var(--muted);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      border-bottom: 1px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
     }
 
-    .halving-info {
-      font-family: 'Space Mono', monospace;
-      font-size: 12px;
+    .chart-tab:hover { color: var(--text); }
+
+    .chart-tab.active {
+      color: var(--btc);
+      border-bottom-color: var(--btc);
+    }
+
+    .chart-panel {
+      display: none;
+      padding: 16px 20px 14px;
+      min-height: 200px;
+    }
+
+    .chart-panel.active { display: block; }
+
+    .chart-panel canvas {
+      width: 100% !important;
+      max-height: 300px;
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chart-ma-legend {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .ma-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      color: var(--muted);
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 300;
+      letter-spacing: 0.5px;
+    }
+
+    .ma-dot {
+      width: 14px; height: 1px;
+    }
+
+    .chart-regime-badge {
+      font-family: 'Roboto Condensed', sans-serif;
+      font-size: 10px;
+      font-weight: 400;
+      padding: 2px 8px;
+      border-radius: 2px;
+      letter-spacing: 1px;
+    }
+
+    .chart-regime-badge.bull {
+      color: var(--green);
+      background: rgba(74,222,128,0.06);
+    }
+
+    .chart-regime-badge.bear {
+      color: var(--red);
+      background: rgba(248,113,113,0.06);
+    }
+
+    .chart-regime-badge.neutral {
+      color: var(--muted);
+      background: var(--faint);
+    }
+
+    .chart-loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 300;
+      font-size: 11px;
+      letter-spacing: 1px;
+    }
+
+    /* barra de progresso do ciclo (integrada no gráfico) */
+    .cycle-bar-inline {
+      padding: 14px 20px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .cycle-bar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .cycle-bar-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .cycle-bar-info {
+      font-family: 'Roboto Condensed', sans-serif;
+      font-size: 11px;
+      font-weight: 400;
       color: var(--btc);
     }
 
     .bar-track {
       background: var(--faint);
-      border-radius: 4px;
-      height: 8px;
+      border-radius: 1px;
+      height: 3px;
       overflow: hidden;
     }
 
     .bar-fill {
       height: 100%;
-      background: linear-gradient(90deg, var(--btc), #ff6b00);
-      border-radius: 4px;
+      background: var(--btc);
+      border-radius: 1px;
       transition: width 1s ease;
     }
 
     .halving-labels {
       display: flex;
       justify-content: space-between;
-      margin-top: 8px;
-      font-family: 'Space Mono', monospace;
-      font-size: 10px;
+      margin-top: 6px;
+      font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 300;
+      font-size: 9px;
       color: var(--muted);
+      letter-spacing: 0.5px;
     }
 
     /* ── FOOTER ── */
     footer {
       text-align: center;
       color: var(--muted);
-      font-size: 11px;
-      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      font-weight: 300;
+      letter-spacing: 2px;
+      text-transform: uppercase;
       padding-top: 24px;
       border-top: 1px solid var(--border);
     }
 
     /* ── REFRESH TIMER ── */
     .timer-bar {
-      height: 2px;
-      background: var(--btc-dim);
+      height: 1px;
+      background: var(--faint);
       margin-bottom: 32px;
-      border-radius: 2px;
       overflow: hidden;
     }
 
@@ -482,9 +549,9 @@
     .flipboard {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 2px;
       overflow: hidden;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
     }
 
     .flipboard-header {
@@ -496,30 +563,31 @@
     }
 
     .flipboard-label {
-      font-size: 10px;
+      font-size: 9px;
       text-transform: uppercase;
-      letter-spacing: 2px;
+      letter-spacing: 3px;
       color: var(--muted);
       display: flex;
       align-items: center;
       gap: 8px;
+      font-weight: 400;
     }
 
     .flipboard-label::before {
       content: '';
-      width: 4px; height: 4px;
+      width: 3px; height: 3px;
       border-radius: 50%;
-      background: var(--blue);
+      background: var(--btc);
       display: block;
     }
 
     .flipboard-source {
-      font-family: 'Space Mono', monospace;
+      font-family: 'Roboto Condensed', sans-serif;
       font-size: 10px;
+      font-weight: 300;
       color: var(--muted);
     }
 
-    /* 3 slots visíveis */
     .flip-rows {
       display: flex;
       flex-direction: column;
@@ -530,58 +598,47 @@
       grid-template-columns: 1fr auto;
       align-items: center;
       gap: 16px;
-      padding: 18px 20px;
+      padding: 16px 20px;
       border-bottom: 1px solid var(--border);
       position: relative;
       overflow: hidden;
-      min-height: 72px;
+      min-height: 64px;
     }
 
     .flip-row:last-child { border-bottom: none; }
 
-    /* linha de separação horizontal dos "cartões" */
-    .flip-row::after {
-      content: '';
-      position: absolute;
-      left: 0; right: 0;
-      top: 50%;
-      height: 1px;
-      background: rgba(0,0,0,0.4);
-      pointer-events: none;
-    }
-
     .flip-headline {
-      font-size: 17px;
-      font-weight: 600;
+      font-size: 15px;
+      font-weight: 300;
       color: var(--text);
-      line-height: 1.35;
+      line-height: 1.4;
       overflow: hidden;
     }
 
     .flip-meta {
-      font-size: 13px;
+      font-size: 11px;
       color: var(--muted);
       margin-top: 4px;
-      font-family: 'Space Mono', monospace;
+      font-weight: 300;
+      letter-spacing: 0.5px;
     }
 
     .flip-tag {
-      font-size: 11px;
-      font-weight: 700;
+      font-size: 9px;
+      font-weight: 400;
       text-transform: uppercase;
-      letter-spacing: 1.5px;
-      padding: 5px 12px;
-      border-radius: 5px;
+      letter-spacing: 2px;
+      padding: 4px 10px;
+      border-radius: 2px;
       white-space: nowrap;
-      min-width: 72px;
+      min-width: 64px;
       text-align: center;
     }
 
-    .flip-tag.bullish { background: rgba(34,214,122,0.15); color: var(--green); border: 1px solid rgba(34,214,122,0.3); }
-    .flip-tag.bearish { background: rgba(240,69,90,0.15);  color: var(--red);   border: 1px solid rgba(240,69,90,0.3); }
-    .flip-tag.neutral { background: rgba(61,142,255,0.10); color: var(--blue);  border: 1px solid rgba(61,142,255,0.2); }
+    .flip-tag.bullish { background: rgba(74,222,128,0.08); color: var(--green); }
+    .flip-tag.bearish { background: rgba(248,113,113,0.08); color: var(--red); }
+    .flip-tag.neutral { background: var(--faint); color: var(--muted); }
 
-    /* animação flip — cada char tumba */
     .flip-char {
       display: inline-block;
       position: relative;
@@ -611,15 +668,14 @@
       .hero-stats { text-align: left; flex-direction: row; flex-wrap: wrap; gap: 20px; }
       .hero-price { font-size: clamp(38px, 11vw, 58px); }
       .grid-3 { grid-template-columns: 1fr; }
-      .agent-panel { border-radius: 12px; }
-      .cycles-chart-wrap { padding: 14px 12px 8px; }
+      .chart-block { margin-top: 12px; }
+      .chart-tab { font-size: 9px; padding: 10px 6px; letter-spacing: 1px; }
+      .chart-panel { padding: 12px 12px 10px; }
       .flipboard-header { flex-direction: column; align-items: flex-start; gap: 4px; }
-      .flip-headline { font-size: 15px; }
-      .editorial p { font-size: 15px; }
-      .fg-number { font-size: 42px; }
+      .flip-headline { font-size: 14px; }
+      .fg-number { font-size: 40px; }
     }
     @media (min-width: 601px) and (max-width: 1024px) {
-      /* iPad */
       .grid-3 { grid-template-columns: repeat(3, 1fr); }
       .hero-price { font-size: clamp(44px, 6vw, 62px); }
       .wrap { padding: 32px 32px 48px; }
@@ -629,9 +685,9 @@
     .agent-panel {
       background: var(--card);
       border: 1px solid var(--border);
-      border-left: 3px solid var(--blue);
-      border-radius: 14px;
-      margin-bottom: 20px;
+      border-left: 2px solid var(--btc);
+      border-radius: 2px;
+      margin-bottom: 16px;
       overflow: hidden;
     }
     .agent-panel-header {
@@ -642,25 +698,26 @@
       border-bottom: 1px solid var(--border);
     }
     .agent-panel-label {
-      font-size: 10px;
+      font-size: 9px;
       text-transform: uppercase;
-      letter-spacing: 2px;
-      color: var(--blue);
+      letter-spacing: 3px;
+      color: var(--btc);
       display: flex;
       align-items: center;
       gap: 8px;
+      font-weight: 400;
     }
     .agent-panel-label::before {
       content: '';
-      width: 4px; height: 4px;
+      width: 3px; height: 3px;
       border-radius: 50%;
-      background: var(--blue);
+      background: var(--btc);
     }
-    .agent-panel-meta { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted); }
-    .agent-summary-text { padding: 16px 20px; font-size: 15px; line-height: 1.75; color: var(--text); min-height: 60px; }
+    .agent-panel-meta { font-family: 'Roboto Condensed', sans-serif; font-size: 10px; font-weight: 300; color: var(--muted); }
+    .agent-summary-text { padding: 20px 24px; font-size: 14px; line-height: 1.8; color: var(--text); font-weight: 300; min-height: 60px; }
     .agent-skeleton { display: flex; flex-direction: column; gap: 10px; padding: 16px 20px; }
     .skel-line {
-      height: 13px; border-radius: 4px;
+      height: 12px; border-radius: 1px;
       background: linear-gradient(90deg, var(--border) 25%, var(--faint) 50%, var(--border) 75%);
       background-size: 200% 100%;
       animation: shimmer 1.6s infinite;
@@ -675,46 +732,122 @@
     }
     #agent-input {
       flex: 1;
-      background: rgba(255,255,255,0.03);
+      background: transparent;
       border: 1px solid var(--border);
-      border-radius: 6px;
+      border-radius: 2px;
       padding: 8px 12px;
       color: var(--text);
       font-family: 'Roboto Condensed', sans-serif;
+      font-weight: 300;
       font-size: 13px;
       outline: none;
       height: 36px;
     }
-    #agent-input:focus { border-color: rgba(61,142,255,0.4); }
+    #agent-input:focus { border-color: rgba(247,147,26,0.3); }
     #agent-input::placeholder { color: var(--muted); }
     #agent-send {
       height: 36px; padding: 0 16px;
-      background: rgba(61,142,255,0.12);
-      border: 1px solid rgba(61,142,255,0.25);
-      border-radius: 6px;
-      color: var(--blue);
+      background: rgba(247,147,26,0.08);
+      border: 1px solid rgba(247,147,26,0.15);
+      border-radius: 2px;
+      color: var(--btc);
       font-family: 'Roboto Condensed', sans-serif;
-      font-size: 13px; font-weight: 600;
+      font-size: 12px; font-weight: 400;
+      letter-spacing: 1px;
+      text-transform: uppercase;
       cursor: pointer;
       transition: all 0.2s;
     }
-    #agent-send:hover:not(:disabled) { background: rgba(61,142,255,0.22); border-color: var(--blue); }
-    #agent-send:disabled { opacity: 0.35; cursor: default; }
+    #agent-send:hover:not(:disabled) { background: rgba(247,147,26,0.15); }
+    #agent-send:disabled { opacity: 0.3; cursor: default; }
     #agent-history { display: none; flex-direction: column; max-height: 320px; overflow-y: auto; border-top: 1px solid var(--border); }
     #agent-history.visible { display: flex; }
-    .ah-msg { padding: 12px 20px; font-size: 14px; line-height: 1.65; border-bottom: 1px solid var(--border); }
+    .ah-msg { padding: 14px 24px; font-size: 13px; line-height: 1.7; font-weight: 300; border-bottom: 1px solid var(--border); }
     .ah-msg:last-child { border-bottom: none; }
-    .ah-msg.user { background: rgba(247,147,26,0.04); color: var(--btc); font-weight: 600; }
+    .ah-msg.user { background: rgba(247,147,26,0.03); color: var(--btc); font-weight: 400; }
     .ah-msg.user::before { content: '↑  '; }
     .ah-msg.ai { color: var(--text); }
     .ah-msg.ai strong { color: var(--btc); }
     .typing-dots { display: inline-flex; gap: 4px; align-items: center; }
-    .typing-dots span { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); animation: tdot 1.2s infinite; opacity: 0.6; }
+    .typing-dots span { width: 4px; height: 4px; border-radius: 50%; background: var(--btc); animation: tdot 1.2s infinite; opacity: 0.4; }
     .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
     .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes tdot { 0%,80%,100% { transform: scale(0.7); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
+    @keyframes tdot { 0%,80%,100% { transform: scale(0.7); opacity: 0.2; } 40% { transform: scale(1); opacity: 0.8; } }
+
+    /* ── HEADER ACTIONS ── */
+    .header-actions { display: flex; gap: 8px; align-items: center; margin-left: 16px; }
+    .lang-link {
+      font-family: 'Roboto Condensed', sans-serif;
+      font-size: 11px;
+      font-weight: 400;
+      letter-spacing: 1px;
+      text-decoration: none;
+      color: var(--muted);
+      padding: 2px 6px;
+      transition: color 0.15s;
+    }
+    .lang-link:hover { color: var(--text); }
+    .lang-link.active { color: var(--btc); font-weight: 700; }
+    .hdr-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 2px;
+      width: 32px; height: 32px;
+      cursor: pointer;
+      font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .hdr-btn:hover { border-color: var(--btc); color: var(--btc); }
+
+    /* ── LIGHT THEME ── */
+    body.light {
+      --bg:      #f5f5f5;
+      --card:    #ffffff;
+      --border:  rgba(0,0,0,0.12);
+      --text:    #111;
+      --muted:   #777;
+      --faint:   rgba(0,0,0,0.08);
+      --btc:     #b5620a;
+      --btc-dim: rgba(181,98,10,0.08);
+      --green:   #16a34a;
+      --red:     #dc2626;
+    }
+    body.light .chart-loading { color: #777; }
+    body.light .flipboard,
+    body.light .agent-panel { background: #fff; }
+    body.light #agent-input { background: #f0f0f0; border-color: rgba(0,0,0,0.15); }
+    body.light #agent-input:focus { border-color: var(--btc); }
+
+    /* ── PRINT / PDF ── */
+    @media print {
+      .timer-bar, .agent-chat-bar, #agent-history,
+      .chart-tabs, .header-actions, .live-dot, footer,
+      #install-banner, .flipboard, .lang-link,
+      .agent-panel { display: none !important; }
+      body { background: #fff !important; color: #000 !important; font-size: 10px !important; }
+      .wrap { max-width: 100%; padding: 8px; }
+      .hero { padding: 12px; margin-bottom: 8px; border: 1px solid #ddd; }
+      .hero-price { font-size: 32px !important; }
+      .hero-summary { font-size: 10px !important; }
+      .grid-3 { gap: 6px; margin-bottom: 8px; }
+      .card { padding: 10px; border: 1px solid #ddd; }
+      .card-val { font-size: 18px !important; }
+      .fg-wrap { padding: 10px; margin-bottom: 8px; border: 1px solid #ddd; }
+      .fg-number { font-size: 30px !important; }
+      .chart-block { border: 1px solid #ddd; margin-top: 6px; }
+      .chart-panel { padding: 8px !important; }
+      .chart-panel canvas { max-height: 180px !important; }
+      .card, .hero, .fg-wrap, .chart-block { break-inside: avoid; page-break-inside: avoid; }
+      .chart-panel { display: block !important; }
+      .chart-panel:not(.active) { display: none !important; }
+      @page { margin: 6mm; size: A4; }
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 
 <body>
@@ -729,12 +862,197 @@
       <h1>SARDINHAS Bitcoin <span>Intelligence</span></h1>
     </div>
     <div class="header-right">
-      <span class="live-dot"></span> Em tempo real<br>
-      Última atualização: <span id="updated">--</span>
+      <span class="live-dot"></span> <span data-i18n="live">Em tempo real</span><br>
+      <span data-i18n="updated">Última atualização</span>: <span id="updated">--</span>
+    </div>
+    <div class="header-actions">
+      <a href="#" class="lang-link" id="lang-pt" onclick="switchLang('pt');return false">PT</a>
+      <a href="#" class="lang-link active" id="lang-en" onclick="switchLang('en');return false">EN</a>
+      <button class="hdr-btn" id="theme-btn" onclick="toggleTheme()" title="Light theme" style="display:none">◑</button>
+      <button class="hdr-btn" id="screenshot-btn" onclick="captureJPG()" title="Save as JPG" style="display:none">↓ JPG</button>
     </div>
   </header>
 
-  <!-- AGENTE IA -->
+  <!-- HERO BITCOIN -->
+  <section class="hero" id="hero-section">
+    <canvas id="hero-sparkline"></canvas>
+    <div>
+      <div class="hero-label" data-i18n="hero-label">Bitcoin · USD</div>
+      <div class="hero-price" id="btc-price">$--</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+        <div>
+          <span class="badge neu" id="btc-badge-1h" style="margin-top:0">--</span>
+          <div style="font-size:9px;color:var(--muted);font-family:'Roboto Condensed',sans-serif;font-weight:300;text-align:center;margin-top:3px;letter-spacing:1px">1H</div>
+        </div>
+        <div>
+          <span class="badge neu" id="btc-badge" style="margin-top:0">--</span>
+          <div style="font-size:9px;color:var(--muted);font-family:'Roboto Condensed',sans-serif;font-weight:300;text-align:center;margin-top:3px;letter-spacing:1px">24H</div>
+        </div>
+      </div>
+      <div class="hero-summary" id="btc-summary"></div>
+    </div>
+    <div class="hero-stats">
+      <div class="stat-item">
+        <div class="stat-val" id="btc-dominance">--%</div>
+        <div class="stat-lbl" data-i18n="dominance-label">BTC Dominance</div>
+      </div>
+      <div class="stat-item" style="margin-top:14px">
+        <div style="font-family:'Roboto Condensed',sans-serif;font-weight:300;font-size:13px;color:var(--btc);line-height:1.4" id="h24-high">▲ --</div>
+        <div style="font-family:'Roboto Condensed',sans-serif;font-weight:300;font-size:13px;color:var(--muted);line-height:1.4" id="h24-low">▼ --</div>
+        <div class="stat-lbl" style="margin-top:4px">High / Low 24h</div>
+      </div>
+      <div class="stat-item" style="margin-top:14px">
+        <div class="stat-val" id="mayer-val" style="font-size:26px">--</div>
+        <div class="stat-lbl">Mayer Multiple</div>
+        <div style="font-family:'Roboto Condensed',sans-serif;font-weight:300;font-size:10px;color:var(--muted);margin-top:3px" id="mayer-lbl">SMA 200d</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEAR & GREED INDEX -->
+  <div class="fg-wrap">
+    <div class="card-title" data-i18n="fg-title" style="margin-bottom:12px;">Fear &amp; Greed Index</div>
+    <div class="fg-top">
+      <div class="fg-score">
+        <div class="fg-number" id="fg-value">--</div>
+        <div class="fg-label" id="fg-classification">--</div>
+      </div>
+      <div class="fg-history" id="fg-history" data-i18n="fg-history-default">
+        Yesterday: -- · Last week: --
+      </div>
+    </div>
+    <div class="fg-bar-track">
+      <div class="fg-needle" id="fg-needle" style="left:50%"></div>
+    </div>
+    <div class="fg-bar-labels">
+      <span data-i18n="fg-extreme-fear">Extreme Fear</span>
+      <span data-i18n="fg-fear">Fear</span>
+      <span data-i18n="fg-neutral">Neutral</span>
+      <span data-i18n="fg-greed">Greed</span>
+      <span data-i18n="fg-extreme-greed">Extreme Greed</span>
+    </div>
+  </div>
+
+    <!-- GRÁFICOS — 4 TABS -->
+    <div class="chart-block">
+
+      <!-- Tabs -->
+      <div class="chart-tabs">
+        <button class="chart-tab active" onclick="switchTab('cycles')" data-i18n="tab-cycles">Ciclos</button>
+        <button class="chart-tab" onclick="switchTab('weekly')" data-i18n="tab-weekly">Semanal</button>
+        <button class="chart-tab" onclick="switchTab('monthly')" data-i18n="tab-monthly">Mensal</button>
+        <button class="chart-tab" onclick="switchTab('yearly')" data-i18n="tab-yearly">Anual</button>
+      </div>
+
+      <!-- Tab 1: Ciclos pós-halving -->
+      <div class="chart-panel active" id="panel-cycles">
+        <div class="chart-header">
+          <div class="chart-ma-legend">
+            <div class="ma-item"><div class="ma-dot" style="background:#4a5580"></div>2012</div>
+            <div class="ma-item"><div class="ma-dot" style="background:#3a6090"></div>2016</div>
+            <div class="ma-item"><div class="ma-dot" style="background:#5a7aaa"></div>2020</div>
+            <div class="ma-item"><div class="ma-dot" style="background:#f7931a"></div>2024</div>
+          </div>
+          <span class="chart-regime-badge neutral" id="badge-cycles">--</span>
+        </div>
+        <!-- Barra de progresso do ciclo integrada -->
+        <div class="cycle-bar-inline">
+          <div class="cycle-bar-header">
+            <span class="cycle-bar-label" data-i18n="cycle-label">Ciclo Pós-Halving · Abril 2024</span>
+            <span class="cycle-bar-info" id="halving-days">-- days of cycle</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" id="halving-bar" style="width:0%"></div>
+          </div>
+          <div class="halving-labels">
+            <span data-i18n="halving-start">Halving: 19 Abr 2024</span>
+            <span id="halving-pct">0%</span>
+            <span data-i18n="halving-next">Próximo: ~Abr 2028</span>
+          </div>
+        </div>
+        <canvas id="cycles-chart" height="140"></canvas>
+      </div>
+
+      <!-- Tab 2: Semanal -->
+      <div class="chart-panel" id="panel-weekly">
+        <div class="chart-header">
+          <div class="chart-ma-legend">
+            <div class="ma-item"><div class="ma-dot" style="background:#f7931a"></div>EMA 20W</div>
+            <div class="ma-item"><div class="ma-dot" style="background:#777"></div>EMA 50W</div>
+            <div class="ma-item"><div class="ma-dot" style="background:rgba(255,255,255,0.2)"></div>EMA 200W</div>
+            <div class="ma-item"><div class="ma-dot" style="background:rgba(255,159,26,0.5)"></div>RSI 14</div>
+            <div class="ma-item"><div class="ma-dot" style="background:rgba(90,100,128,0.4)"></div>Volume</div>
+          </div>
+          <span class="chart-regime-badge neutral" id="badge-weekly">A carregar...</span>
+        </div>
+        <div class="chart-loading" id="loading-weekly" data-i18n="loading-weekly">Loading weekly data...</div>
+        <canvas id="weekly-chart" height="200" style="display:none"></canvas>
+      </div>
+
+      <!-- Tab 3: Mensal -->
+      <div class="chart-panel" id="panel-monthly">
+        <div class="chart-header">
+          <div class="chart-ma-legend">
+            <div class="ma-item"><div class="ma-dot" style="background:#f7931a"></div>SMA 10M</div>
+            <div class="ma-item"><div class="ma-dot" style="background:#777"></div>SMA 20M</div>
+            <div class="ma-item"><div class="ma-dot" style="background:rgba(255,159,26,0.5)"></div>RSI 14</div>
+            <div class="ma-item"><div class="ma-dot" style="background:rgba(90,100,128,0.4)"></div>Volume</div>
+          </div>
+          <span class="chart-regime-badge neutral" id="badge-monthly">A carregar...</span>
+        </div>
+        <div class="chart-loading" id="loading-monthly" data-i18n="loading-monthly">Loading monthly data...</div>
+        <canvas id="monthly-chart" height="200" style="display:none"></canvas>
+      </div>
+
+      <!-- Tab 4: Anual -->
+      <div class="chart-panel" id="panel-yearly">
+        <div class="chart-header">
+          <div class="chart-ma-legend">
+            <div class="ma-item"><div class="ma-dot" style="background:#f7931a"></div><span data-i18n="sma-avg">Yearly avg</span></div>
+            <div class="ma-item"><div class="ma-dot" style="background:#777"></div><span data-i18n="sma-4y">SMA 4 years</span></div>
+            <div class="ma-item"><div class="ma-dot" style="background:rgba(90,100,128,0.4)"></div>Volume</div>
+          </div>
+          <span class="chart-regime-badge neutral" id="badge-yearly">--</span>
+        </div>
+        <div class="chart-loading" id="loading-yearly" data-i18n="loading-yearly">Loading yearly data...</div>
+        <canvas id="yearly-chart" height="200" style="display:none"></canvas>
+      </div>
+
+    </div>
+
+  <!-- CARDS -->
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-title" data-i18n="gold-title">Ouro em BTC</div>
+      <div class="card-val" id="gold-btc">-- BTC</div>
+      <div class="card-desc" id="gold-usd">-- USD/oz</div>
+    </div>
+    <div class="card">
+      <div class="card-title" data-i18n="eth-title">Ethereum em BTC</div>
+      <div class="card-val" id="eth-btc">-- BTC</div>
+      <div class="card-desc" id="eth-usd">-- USD</div>
+    </div>
+    <div class="card">
+      <div class="card-title" data-i18n="oil-title">Petróleo WTI em BTC</div>
+      <div class="card-val" id="crude-btc">-- BTC</div>
+      <div class="card-desc" id="crude-desc">-- USD/barril</div>
+    </div>
+  </div>
+
+  <!-- PAINEL AEROPORTO -->
+  <div class="flipboard">
+    <div class="flipboard-header">
+      <div class="flipboard-label" data-i18n="news-label">News · Market & Bitcoin</div>
+      <div class="flipboard-source" id="news-updated" data-i18n="news-loading">Loading...</div>
+    </div>
+    <div class="flip-rows" id="flip-rows">
+      <div class="flip-row">
+        <div><div class="flip-headline" data-i18n="news-loading">Loading...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AGENTE IA (hidden — mantido no código)
   <div class="agent-panel">
     <div class="agent-panel-header">
       <div class="agent-panel-label">Agente IA · Leitura do Mercado</div>
@@ -752,109 +1070,9 @@
       <button id="agent-send" onclick="agentAsk()">Perguntar</button>
     </div>
   </div>
+  -->
 
-  <!-- HERO BITCOIN -->
-  <section class="hero" id="hero-section">
-    <div>
-      <div class="hero-label">Bitcoin · USD</div>
-      <div class="hero-price" id="btc-price">$--</div>
-      <span class="badge neu" id="btc-badge">--</span>
-      <div class="hero-summary" id="btc-summary"></div>
-    </div>
-    <div class="hero-stats">
-      <div class="stat-item">
-        <div class="stat-val" id="btc-dominance">--%</div>
-        <div class="stat-lbl">Dominância BTC</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- HALVING PROGRESS -->
-  <div class="halving-bar-wrap">
-    <div class="halving-header">
-      <div class="halving-title">Ciclo Pós-Halving · Abril 2024</div>
-      <div class="halving-info" id="halving-days">-- dias de ciclo</div>
-    </div>
-    <div class="bar-track">
-      <div class="bar-fill" id="halving-bar" style="width:0%"></div>
-    </div>
-    <div class="halving-labels">
-      <span>Halving: 19 Abr 2024</span>
-      <span id="halving-pct">0%</span>
-      <span>Próximo: ~Abr 2028</span>
-    </div>
-  </div>
-
-    <!-- GRÁFICO CICLOS PÓS-HALVING -->
-    <div class="cycles-chart-wrap">
-      <div class="cycles-legend">
-        <div class="legend-item"><div class="legend-dot" style="background:#4a5580"></div>Ciclo 2012</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#3a6090"></div>Ciclo 2016</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#5a7aaa"></div>Ciclo 2020</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#f7931a"></div>Ciclo 2024 (atual)</div>
-      </div>
-      <canvas id="cycles-chart" height="140"></canvas>
-    </div>
-
-  <!-- CARDS -->
-  <div class="grid-3">
-    <div class="card">
-      <div class="card-title">Ouro em BTC</div>
-      <div class="card-val" id="gold-btc">-- BTC</div>
-      <div class="card-desc" id="gold-trend">--</div>
-    </div>
-    <div class="card">
-      <div class="card-title">Ethereum em BTC</div>
-      <div class="card-val" id="eth-btc">-- BTC</div>
-      <div class="card-desc" id="eth-trend">--</div>
-    </div>
-    <div class="card">
-      <div class="card-title">Petróleo WTI em BTC</div>
-      <div class="card-val" id="crude-btc">-- BTC</div>
-      <div class="card-desc" id="crude-desc">--</div>
-    </div>
-  </div>
-
-  <!-- FEAR & GREED INDEX -->
-  <div class="fg-wrap">
-    <div class="card-title" style="margin-bottom:12px;">Fear &amp; Greed Index</div>
-    <div class="fg-top">
-      <div class="fg-score">
-        <div class="fg-number" id="fg-value">--</div>
-        <div class="fg-label" id="fg-classification">--</div>
-      </div>
-      <div class="fg-history" id="fg-history">
-        Ontem: --<br>Semana passada: --
-      </div>
-    </div>
-    <div class="fg-bar-track">
-      <div class="fg-needle" id="fg-needle" style="left:50%"></div>
-    </div>
-    <div class="fg-bar-labels">
-      <span>Medo Extremo</span><span>Medo</span><span>Neutro</span><span>Ganância</span><span>Ganância Extrema</span>
-    </div>
-  </div>
-
-  <!-- PAINEL AEROPORTO -->
-  <div class="flipboard">
-    <div class="flipboard-header">
-      <div class="flipboard-label">Notícias · Mercado & Bitcoin</div>
-      <div class="flipboard-source" id="news-updated">a carregar...</div>
-    </div>
-    <div class="flip-rows" id="flip-rows">
-      <div class="flip-row">
-        <div><div class="flip-headline">A carregar notícias...</div></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- EDITORIAL -->
-  <div class="editorial">
-    <div class="editorial-title">Leitura do Momento</div>
-    <p id="editorial">A carregar análise...</p>
-  </div>
-
-  <footer>
+  <footer data-i18n="footer">
     Informação gerada automaticamente · Não constitui conselho financeiro
   </footer>
 
@@ -862,17 +1080,35 @@
 
 <script>
   // ── HALVING ──
+  const HALVING_DATE  = new Date('2024-04-19T00:00:00Z');
+  const NEXT_HALVING  = new Date('2028-04-19T00:00:00Z');
+  const TOTAL_DAYS    = (NEXT_HALVING - HALVING_DATE) / 86400000;
+
+  function getCycleDecimalDay() {
+    return (new Date() - HALVING_DATE) / 86400000;
+  }
+
+  function formatCycleTime(decimalDay) {
+    const days  = Math.floor(decimalDay);
+    const hours = Math.floor((decimalDay - days) * 24);
+    const mins  = Math.floor(((decimalDay - days) * 24 - hours) * 60);
+    return `${days}d ${String(hours).padStart(2,'0')}h ${String(mins).padStart(2,'0')}m`;
+  }
+
+  function updateHalvingBar() {
+    const d = getCycleDecimalDay();
+    const pct = Math.min(100, ((d / TOTAL_DAYS) * 100)).toFixed(2);
+    const elDays = document.getElementById('halving-days');
+    const elBar  = document.getElementById('halving-bar');
+    const elPct  = document.getElementById('halving-pct');
+    if (elDays) elDays.textContent = formatCycleTime(d) + ' ' + t('cycle-suffix');
+    if (elBar)  elBar.style.width = pct + '%';
+    if (elPct)  elPct.textContent = pct + t('cycle-pct-suffix');
+    return Math.floor(d);
+  }
+
   function calcHalving() {
-    const halvingDate = new Date('2024-04-19T00:00:00Z');
-    const nextHalving = new Date('2028-04-19T00:00:00Z');
-    const now = new Date();
-    const daysSince = Math.floor((now - halvingDate) / 86400000);
-    const totalDays = Math.floor((nextHalving - halvingDate) / 86400000);
-    const pct = Math.min(100, Math.round((daysSince / totalDays) * 100));
-    document.getElementById('halving-days').textContent = `${daysSince} dias de ciclo`;
-    document.getElementById('halving-bar').style.width = pct + '%';
-    document.getElementById('halving-pct').textContent = pct + '% do ciclo';
-    return daysSince;
+    return updateHalvingBar();
   }
 
   function setBadge(el, val) {
@@ -884,19 +1120,19 @@
 
   // ── FEAR & GREED ──
   const FG_COLORS = {
-    'Medo Extremo':    '#e63946',
-    'Medo':            '#f4833d',
-    'Neutro':          '#f5c542',
-    'Ganância':        '#8bc34a',
-    'Ganância Extrema':'#22d67a',
+    'fg-extreme-fear': '#f87171',
+    'fg-fear':         '#fb923c',
+    'fg-neutral':      '#999',
+    'fg-greed':        '#f7931a',
+    'fg-extreme-greed':'#fbbf24',
   };
 
   function fgClassify(v) {
-    if (v <= 24) return 'Medo Extremo';
-    if (v <= 44) return 'Medo';
-    if (v <= 54) return 'Neutro';
-    if (v <= 74) return 'Ganância';
-    return 'Ganância Extrema';
+    if (v <= 24) return 'fg-extreme-fear';
+    if (v <= 44) return 'fg-fear';
+    if (v <= 54) return 'fg-neutral';
+    if (v <= 74) return 'fg-greed';
+    return 'fg-extreme-greed';
   }
 
   function renderFG(val, yesterday, lastWeek) {
@@ -905,25 +1141,200 @@
     const color = FG_COLORS[cls];
     document.getElementById('fg-value').textContent = val;
     document.getElementById('fg-value').style.color = color;
-    document.getElementById('fg-classification').textContent = cls;
+    document.getElementById('fg-classification').textContent = t(cls);
     document.getElementById('fg-classification').style.color = color;
     document.getElementById('fg-needle').style.left = val + '%';
     if (yesterday || lastWeek) {
       document.getElementById('fg-history').innerHTML =
-        `Ontem: <b style="color:${FG_COLORS[fgClassify(yesterday)]}">${yesterday}</b> · Semana: <b style="color:${FG_COLORS[fgClassify(lastWeek)]}">${lastWeek}</b>`;
+        `${t('fg-yesterday')}: <b style="color:${FG_COLORS[fgClassify(yesterday)]}">${yesterday}</b> · ${t('fg-week')}: <b style="color:${FG_COLORS[fgClassify(lastWeek)]}">${lastWeek}</b>`;
     }
   }
 
   async function loadFearGreed() {
     try {
-      const r = await fetch('/api/feargreed');
+      const r = await fetch('/api/feargreed?t=' + Date.now());
       const d = await r.json();
       if (d.value) renderFG(+d.value, +d.yesterday, +d.last_week);
     } catch(e) { console.warn('F&G falhou:', e); }
   }
 
-  // ── GRÁFICO CICLOS ──
+  // ── TABS ──────────────────────────────────────────────────────────────────
+  const _chartInstances = {};
+  const _chartLoaded = {};
+
+  function switchTab(name) {
+    document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.chart-panel').forEach(p => p.classList.remove('active'));
+    const btn = [...document.querySelectorAll('.chart-tab')].find(b => b.getAttribute('onclick').includes("'" + name + "'"));
+    if (btn) btn.classList.add('active');
+    const panel = document.getElementById('panel-' + name);
+    if (panel) panel.classList.add('active');
+
+    // Resize gráfico existente se o tab já foi carregado
+    if (_chartInstances[name]) {
+      setTimeout(() => _chartInstances[name].resize(), 50);
+    }
+
+    if (name !== 'cycles' && !_chartLoaded[name]) {
+      _chartLoaded[name] = true;
+      // Aguardar painel estar visível antes de carregar OHLC
+      setTimeout(() => loadOHLC(name), 80);
+    }
+  }
+
+  // ── UTILITÁRIOS ───────────────────────────────────────────────────────────
+  // ── RSI ───────────────────────────────────────────────────────────────────
+  function calcRSI(data, period = 14) {
+    const rsi = new Array(data.length).fill(null);
+    if (data.length < period + 1) return rsi;
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+      const diff = data[i] - data[i - 1];
+      if (diff > 0) gains += diff; else losses -= diff;
+    }
+    let avgGain = gains / period;
+    let avgLoss = losses / period;
+    for (let i = period; i < data.length; i++) {
+      if (i > period) {
+        const diff = data[i] - data[i - 1];
+        avgGain = (avgGain * (period - 1) + (diff > 0 ? diff : 0)) / period;
+        avgLoss = (avgLoss * (period - 1) + (diff < 0 ? -diff : 0)) / period;
+      }
+      const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+      rsi[i] = parseFloat((100 - 100 / (1 + rs)).toFixed(2));
+    }
+    return rsi;
+  }
+
+  function calcEMA(data, period) {
+    const k = 2 / (period + 1);
+    const ema = [];
+    let prev = null;
+    for (let i = 0; i < data.length; i++) {
+      if (i < period - 1) { ema.push(null); continue; }
+      if (prev === null) {
+        // primeiro valor: média simples dos primeiros N candles
+        const sum = data.slice(0, period).reduce((a, b) => a + b, 0);
+        prev = sum / period;
+        ema.push(parseFloat(prev.toFixed(2)));
+      } else {
+        prev = data[i] * k + prev * (1 - k);
+        ema.push(parseFloat(prev.toFixed(2)));
+      }
+    }
+    return ema;
+  }
+
+  function calcSMA(data, period) {
+    return data.map((_, i) => {
+      if (i < period - 1) return null;
+      const slice = data.slice(i - period + 1, i + 1);
+      return parseFloat((slice.reduce((a,b) => a+b, 0) / period).toFixed(2));
+    });
+  }
+
+  function fmtPrice(v) {
+    if (!v) return '--';
+    return '$' + v.toLocaleString('pt-PT', {maximumFractionDigits: 0});
+  }
+
+  function chartColors() {
+    const isLight = document.body.classList.contains('light');
+    if (isLight) {
+      return {
+        grid:    'rgba(0,0,0,0.06)',
+        tick:    '#999',
+        tooltip: { bg:'#fff', border:'rgba(0,0,0,0.1)', title:'#999', body:'#111' },
+        ema1:    '#b5620a',   // laranja escuro — EMA rápida
+        ema2:    '#aaa',      // cinzento — EMA lenta
+        bullBar: 'rgba(22,163,74,0.45)',
+        bearBar: 'rgba(220,38,38,0.45)',
+      };
+    }
+    return {
+      grid:    'rgba(255,255,255,0.06)',
+      tick:    '#777',
+      tooltip: { bg:'#111', border:'rgba(255,255,255,0.12)', title:'#888', body:'#f0f0f0' },
+      ema1:    '#ff9f1a',
+      ema2:    '#666',
+      bullBar: 'rgba(74,222,128,0.45)',
+      bearBar: 'rgba(248,113,113,0.45)',
+    };
+  }
+
+  function baseChartOptions(formatLabel, formatTooltipTitle, formatTooltipBody) {
+    const C = chartColors();
+    return {
+      responsive: true,
+      interaction: { mode:'index', intersect:false },
+      plugins: {
+        legend: { display:false },
+        tooltip: {
+          backgroundColor: C.tooltip.bg,
+          borderColor: C.tooltip.border,
+          borderWidth: 1,
+          titleColor: C.tooltip.title,
+          bodyColor: C.tooltip.body,
+          titleFont: { family:'Roboto Condensed', size:11 },
+          bodyFont: { family:'Roboto Condensed', size:12 },
+          callbacks: {
+            title: items => formatTooltipTitle(items),
+            label: item => formatTooltipBody(item),
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: C.grid },
+          ticks: { color: C.tick, font:{ family:'Roboto Condensed', size:10 },
+                   maxTicksLimit:10, callback: formatLabel }
+        },
+        y: {
+          type: 'logarithmic',
+          grid: { color: C.grid },
+          ticks: { color: C.tick, font:{ family:'Roboto Condensed', size:10 },
+                   callback: v => {
+                     if (v >= 100000) return '$' + (v/1000).toFixed(0) + 'k';
+                     if (v >= 1000)   return '$' + (v/1000).toFixed(0) + 'k';
+                     return '$' + v;
+                   }}
+        }
+      }
+    };
+  }
+
+  function updateBadge(id, price, ema50) {
+    const el = document.getElementById(id);
+    if (!el || !price || !ema50) return;
+    const pct = ((price - ema50) / ema50 * 100).toFixed(1);
+    if (price > ema50) {
+      el.className = 'chart-regime-badge bull';
+      el.textContent = t('badge-above') + ' EMA50 +' + pct + '%';
+    } else {
+      el.className = 'chart-regime-badge bear';
+      el.textContent = t('badge-below') + ' EMA50 ' + pct + '%';
+    }
+  }
+
+  function updateBadgeAnual(id, price, sma4) {
+    const el = document.getElementById(id);
+    if (!el || !price || !sma4) return;
+    const pct = ((price - sma4) / sma4 * 100).toFixed(1);
+    if (price > sma4) {
+      el.className = 'chart-regime-badge bull';
+      el.textContent = t('badge-above') + ' SMA4 ' + '+' + pct + '%';
+    } else {
+      el.className = 'chart-regime-badge bear';
+      el.textContent = t('badge-below') + ' SMA4 ' + pct + '%';
+    }
+  }
+
+  // ── GRÁFICO CICLOS ────────────────────────────────────────────────────────
+  let _cycleCurrentDay = 0;
   function buildCycleChart(currentDay) {
+    _cycleCurrentDay = currentDay;
+
+    // Dados de multiplicador (preço/preço_no_halving) por ciclo
     const cycle2012 = [
       [0,1],[30,1.3],[60,1.8],[90,2.5],[120,3.8],[150,6],[180,10],[210,18],[240,35],
       [270,60],[300,82],[330,95],[360,96],[390,85],[420,70],[450,55],[480,42],[510,32],
@@ -937,49 +1348,27 @@
       [0,1],[60,1.2],[120,1.5],[180,2],[240,3],[300,4.5],[360,6.5],[420,7.8],
       [480,7.2],[540,7.8],[550,7.84],[570,7],[600,5.5],[650,4],[700,3],[800,2.2],[900,1.8],[1000,1.6],[1100,1.5],[1200,1.6],[1300,1.8]
     ];
-    // Ciclo 2024 — preços reais normalizados (1.0 = $63k no halving 19 Abr 2024)
+    // 2024: apenas pontos históricos — o ponto live é adicionado por updateCycleLive()
     const cycle2024 = [
-      [0,   1.00],  // Abr 2024 ~$63k
-      [14,  1.09],  // Mai 2024 ~$69k
-      [45,  1.04],  // Jun 2024 ~$66k
-      [75,  0.92],  // Jul 2024 ~$58k
-      [107, 0.96],  // Ago 2024 ~$61k
-      [137, 0.93],  // Set 2024 ~$59k
-      [168, 1.03],  // Out 2024 ~$65k
-      [183, 1.21],  // Nov 2024 ~$76k
-      [198, 1.51],  // Nov 2024 ~$95k
-      [228, 1.71],  // Dez 2024 ATH ~$108k
-      [244, 1.57],  // Jan 2025 ~$99k
-      [274, 1.37],  // Jan 2025 ~$86k
-      [289, 1.46],  // Fev 2025 ~$92k
-      [304, 1.38],  // Fev 2025 ~$87k
-      [334, 1.22],  // Mar 2025 ~$77k
-      [365, 1.38],  // Abr 2025 ~$87k
-      [395, 1.49],  // Mai 2025 ~$94k
-      [425, 1.67],  // Jun 2025 ~$105k
-      [456, 1.58],  // Jul 2025 ~$100k
-      [486, 1.43],  // Ago 2025 ~$90k
-      [516, 1.35],  // Set 2025 ~$85k
-      [547, 1.28],  // Out 2025 ~$81k
-      [578, 1.22],  // Nov 2025 ~$77k
-      [608, 1.18],  // Dez 2025 ~$74k
-      [638, 1.22],  // Jan 2026 ~$77k
-      [660, 1.33],  // Fev 2026 ~$84k
-      [683, 1.32],  // Mar 2026 ~$83k (hoje)
+      [0,1.00],[30,1.05],[60,0.95],[90,0.93],[120,0.97],[150,0.90],
+      [180,1.10],[210,1.40],[240,1.60],[270,1.40],[300,1.35],
+      [330,1.25],[360,1.40],[390,1.55],[420,1.70],[450,1.55],
+      [480,1.45],[510,1.35],[540,1.28],[570,1.22],[600,1.20],
+      [630,1.22],[660,1.30],[690,1.28],[720,1.28],[750,1.28],
     ];
 
-    const maxDays = 1461; // 4 anos exactos = ciclo completo
-    const labels = Array.from({length: Math.ceil(maxDays/10)+1}, (_,i) => i*10);
+    const maxDays = 1461;
+    const labels = Array.from({length: Math.ceil(maxDays/30)+1}, (_,i) => i*30);
 
     function interpolate(data, day) {
+      if (day <= 0) return data[0][1];
       for (let i = 0; i < data.length - 1; i++) {
         if (day >= data[i][0] && day <= data[i+1][0]) {
           const t = (day - data[i][0]) / (data[i+1][0] - data[i][0]);
           return data[i][1] + t * (data[i+1][1] - data[i][1]);
         }
       }
-      if (day > data[data.length-1][0]) return null;
-      return data[0][1];
+      return data[data.length-1][1]; // extrapolar com último valor
     }
 
     const toPoints = d => labels.map(day => {
@@ -987,28 +1376,48 @@
       return v !== null ? parseFloat(v.toFixed(3)) : null;
     });
 
+    // Gerar pontos do ciclo 2024 e cortar no dia actual
+    const points2024 = toPoints(cycle2024);
+    const cd = currentDay; // dia actual com decimais
+    // Encontrar o ponto mais próximo e nullificar o resto
+    let cutIdx = 0, cutDist = Infinity;
+    for (let i = 0; i < labels.length; i++) {
+      const d = Math.abs(labels[i] - cd);
+      if (d < cutDist) { cutDist = d; cutIdx = i; }
+    }
+    // Interpolar valor exacto no dia actual
+    const valAtCut = interpolate(cycle2024, cd);
+    if (valAtCut !== null) points2024[cutIdx] = parseFloat(valAtCut.toFixed(3));
+    // Cortar pontos futuros
+    for (let i = cutIdx + 1; i < points2024.length; i++) {
+      points2024[i] = null;
+    }
+
+    const C = chartColors();
     const ctx = document.getElementById('cycles-chart').getContext('2d');
-    new Chart(ctx, {
+    _chartInstances['cycles'] = new Chart(ctx, {
       type: 'line',
       data: {
         labels,
         datasets: [
-          { label:'2012', data:toPoints(cycle2012), borderColor:'rgba(74,85,128,0.4)',  backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.4, spanGaps:true },
-          { label:'2016', data:toPoints(cycle2016), borderColor:'rgba(58,96,144,0.5)',  backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.4, spanGaps:true },
-          { label:'2020', data:toPoints(cycle2020), borderColor:'rgba(90,122,170,0.6)', backgroundColor:'transparent', borderWidth:2,   pointRadius:0, tension:0.4, spanGaps:true },
-          { label:'2024 (atual)', data:toPoints(cycle2024), borderColor:'#f7931a', backgroundColor:'rgba(247,147,26,0.05)', borderWidth:2.5, pointRadius:0, tension:0.4, spanGaps:false, fill:true },
+          { label:'2012', data:toPoints(cycle2012), borderColor:'rgba(255,255,255,0.12)', backgroundColor:'transparent', borderWidth:1, pointRadius:0, tension:0.4, spanGaps:true },
+          { label:'2016', data:toPoints(cycle2016), borderColor:'rgba(255,255,255,0.18)', backgroundColor:'transparent', borderWidth:1, pointRadius:0, tension:0.4, spanGaps:true },
+          { label:'2020', data:toPoints(cycle2020), borderColor:'rgba(255,255,255,0.25)', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.4, spanGaps:true },
+          { label:'2024 (atual)', data:points2024, borderColor:'#ff9f1a', backgroundColor:'rgba(255,159,26,0.03)', borderWidth:2, pointRadius:0, tension:0.4, spanGaps:true, fill:true },
         ]
       },
       options: {
         responsive:true,
+        maintainAspectRatio: false,
+        animation:{ duration:800 },
         interaction:{ mode:'index', intersect:false },
         plugins:{
           legend:{ display:false },
           tooltip:{
-            backgroundColor:'#111520', borderColor:'#1e2435', borderWidth:1,
-            titleColor:'#5a6480', bodyColor:'#dde3f0',
-            titleFont:{ family:'Roboto Condensed', size:11 },
-            bodyFont:{ family:'Roboto Condensed', size:13 },
+            backgroundColor:'#111', borderColor:'rgba(255,255,255,0.12)', borderWidth:1,
+            titleColor:'#888', bodyColor:'#f0f0f0',
+            titleFont:{ family:'Roboto Condensed', size:11, weight:300 },
+            bodyFont:{ family:'Roboto Condensed', size:12, weight:300 },
             callbacks:{
               title: items => `Dia ${items[0].label} pós-halving`,
               label: item => ` ${item.dataset.label}: ${item.raw !== null ? item.raw+'x' : '--'}`,
@@ -1016,37 +1425,494 @@
           }
         },
         scales:{
-          x:{ type:'linear', min:0, max:maxDays, grid:{ color:'rgba(30,36,53,0.8)' }, ticks:{ color:'#5a6480', font:{ family:'Roboto Condensed', size:10 }, maxTicksLimit:10, callback:v=>`D${v}` } },
-          y:{ type:'logarithmic', grid:{ color:'rgba(30,36,53,0.8)' }, ticks:{ color:'#5a6480', font:{ family:'Roboto Condensed', size:10 }, callback:v=>v+'x' } }
+          x:{ type:'linear', min:0, max:maxDays, grid:{ color:C.grid }, ticks:{ color:C.tick, font:{ family:'Roboto Condensed', size:10 }, maxTicksLimit:10, callback:v=>`${v}d` } },
+          y:{ type:'logarithmic', grid:{ color:C.grid }, ticks:{ color:C.tick, font:{ family:'Roboto Condensed', size:10 }, callback:v=>v+'x' } }
         }
       }
     });
-
-    // linha vertical dia atual
     Chart.register({
       id:'currentDay',
       afterDraw(chart) {
-        const {ctx, scales:{x,y}} = chart;
-        const xPos = x.getPixelForValue(currentDay);
+        if (chart.canvas.id !== 'cycles-chart') return;
+        const {ctx, scales:{x,y}, data} = chart;
+        const cd = getCycleDecimalDay(); // dia exacto com frações
+        _cycleCurrentDay = cd;
+        const xPos = x.getPixelForValue(cd);
+
+        // Interpolar valor do ciclo 2024 no dia actual
+        const ds2024 = data.datasets[3].data;
+        const labels = data.labels;
+        let yVal = null;
+        for (let i = 0; i < labels.length - 1; i++) {
+          if (cd >= labels[i] && cd <= labels[i+1]) {
+            const v0 = ds2024[i], v1 = ds2024[i+1];
+            if (v0 != null && v1 != null) {
+              const t = (cd - labels[i]) / (labels[i+1] - labels[i]);
+              yVal = v0 + t * (v1 - v0);
+            }
+            break;
+          }
+        }
+        if (yVal == null) {
+          for (let i = ds2024.length - 1; i >= 0; i--) {
+            if (ds2024[i] != null) { yVal = ds2024[i]; break; }
+          }
+        }
+
+        const yPos = yVal != null ? y.getPixelForValue(yVal) : y.bottom;
+
         ctx.save();
-        ctx.strokeStyle = 'rgba(247,147,26,0.35)';
+
+        // Linha tracejada do valor até o fundo do gráfico
+        ctx.strokeStyle = 'rgba(255,159,26,0.5)';
         ctx.lineWidth = 1;
         ctx.setLineDash([4,4]);
-        ctx.beginPath(); ctx.moveTo(xPos,y.top); ctx.lineTo(xPos,y.bottom); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(xPos, yPos); ctx.lineTo(xPos, y.bottom); ctx.stroke();
+        ctx.setLineDash([]);
+
+        if (yVal != null) {
+          // Ponto no valor actual
+          ctx.beginPath();
+          ctx.arc(xPos, yPos, 4, 0, Math.PI * 2);
+          ctx.fillStyle = '#ff9f1a';
+          ctx.fill();
+          // Anel exterior
+          ctx.strokeStyle = 'rgba(255,159,26,0.4)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(xPos, yPos, 8, 0, Math.PI * 2);
+          ctx.stroke();
+          // Label com valor e dia
+          ctx.font = '400 11px "Roboto Condensed"';
+          ctx.fillStyle = '#ff9f1a';
+          ctx.textAlign = 'center';
+          ctx.fillText(yVal.toFixed(2) + 'x', xPos, yPos - 14);
+          ctx.font = '300 9px "Roboto Condensed"';
+          ctx.fillStyle = '#888';
+          ctx.fillText('D' + Math.floor(cd), xPos, yPos - 25);
+        }
         ctx.restore();
       }
     });
   }
 
+  // Atualiza o ciclo em directo com o preço BTC actual
+  const HALVING_PRICE = 63800; // BTC no halving de 19 Abr 2024
+  function updateCycleLive(btcUsd) {
+    const chart = _chartInstances['cycles'];
+    if (!btcUsd) return;
+
+    const decimalDay = getCycleDecimalDay();
+    const multiplier = parseFloat((btcUsd / HALVING_PRICE).toFixed(3));
+
+    // Actualizar o gráfico de ciclos se existir
+    if (chart) {
+      const ds = chart.data.datasets[3]; // dataset 2024 (último)
+      const labels = chart.data.labels;
+
+      // Encontrar o índice mais próximo do dia actual
+      let bestIdx = 0, bestDist = Infinity;
+      for (let i = 0; i < labels.length; i++) {
+        const d = Math.abs(labels[i] - decimalDay);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+
+      // Definir o valor no ponto mais próximo
+      if (bestIdx >= 0 && bestIdx < ds.data.length) {
+        ds.data[bestIdx] = multiplier;
+      }
+
+      // Cortar a linha: todos os pontos DEPOIS do dia actual ficam null
+      // Isto faz a linha do ciclo 2024 terminar exactamente no dia actual
+      for (let i = bestIdx + 1; i < ds.data.length; i++) {
+        ds.data[i] = null;
+      }
+
+      chart.update('none');
+    }
+
+    // Actualizar badge do ciclo
+    const badge = document.getElementById('badge-cycles');
+    if (badge) {
+      const pctChange = ((multiplier - 1) * 100).toFixed(1);
+      if (multiplier >= 1) {
+        badge.className = 'chart-regime-badge bull';
+        badge.textContent = t('badge-since-halving-above', {pct: pctChange});
+      } else {
+        badge.className = 'chart-regime-badge bear';
+        badge.textContent = t('badge-since-halving-below', {pct: pctChange});
+      }
+    }
+  }
+
+  // ── GRÁFICOS OHLC (Semanal / Mensal / Anual) ─────────────────────────────
+  async function loadOHLC(timeframe) {
+    const loadingEl = document.getElementById('loading-' + timeframe);
+    const canvasEl  = document.getElementById(timeframe + '-chart');
+    try {
+      if (loadingEl) loadingEl.textContent = 'A carregar dados ' + timeframe + '...';
+
+      const r = await fetch('/api/ohlc/' + timeframe);
+      const d = await r.json();
+      if (!d.bars || !d.bars.length) throw new Error('sem dados');
+
+      if (loadingEl) loadingEl.style.display = 'none';
+
+      // Destruir gráfico anterior se existir
+      if (_chartInstances[timeframe]) {
+        _chartInstances[timeframe].destroy();
+        delete _chartInstances[timeframe];
+      }
+
+      // Mostrar canvas ANTES de criar o gráfico — Chart.js precisa de dimensões visíveis
+      if (canvasEl) canvasEl.style.display = 'block';
+
+      const bars   = d.bars;
+      const closes = bars.map(b => b.c);
+      const C      = chartColors();
+
+      // Criar gráfico após o browser ter recalculado o layout
+      requestAnimationFrame(() => {
+        if (timeframe === 'weekly') {
+          buildWeeklyChart(bars, closes, C, canvasEl);
+        } else if (timeframe === 'monthly') {
+          buildMonthlyChart(bars, closes, C, canvasEl);
+        } else if (timeframe === 'yearly') {
+          buildYearlyChart(bars, closes, C, canvasEl);
+        }
+        // Forçar resize após criação
+        if (_chartInstances[timeframe]) {
+          _chartInstances[timeframe].resize();
+        }
+      });
+
+    } catch(e) {
+      if (loadingEl) {
+        loadingEl.style.display = 'block';
+        loadingEl.innerHTML = 'Erro ao carregar dados. <a href="#" onclick="retryLoadOHLC(\'' + timeframe + '\'); return false;" style="color:var(--btc)">Tentar novamente</a>';
+      }
+      _chartLoaded[timeframe] = false; // permitir retry
+      console.warn('OHLC ' + timeframe + ':', e);
+    }
+  }
+
+  function retryLoadOHLC(timeframe) {
+    _chartLoaded[timeframe] = true;
+    const loadingEl = document.getElementById('loading-' + timeframe);
+    const canvasEl  = document.getElementById(timeframe + '-chart');
+    if (loadingEl) { loadingEl.style.display = 'block'; loadingEl.textContent = 'A tentar novamente...'; }
+    if (canvasEl) canvasEl.style.display = 'none';
+    loadOHLC(timeframe);
+  }
+
+  // ── SEMANAL: EMA 20W + EMA 50W + EMA 200W + RSI 14 + Volume ────────────────
+  function buildWeeklyChart(bars, closes, C, canvas) {
+    const ema20   = calcEMA(closes, 20);
+    const ema50   = calcEMA(closes, 50);
+    const ema200  = calcEMA(closes, 200);
+    const rsi14   = calcRSI(closes, 14);
+    const volumes = bars.map(b => b.v || 0);
+    const maxVol  = Math.max(1, ...volumes.filter(v => v > 0));
+    const labels  = bars.map(b => {
+      const d = new Date(b.t * 1000);
+      return d.toLocaleDateString('pt-PT', {month:'short', year:'2-digit'});
+    });
+    const barColors = bars.map((b, i) => {
+      const ref = ema50[i];
+      if (!ref) return b.c >= b.o ? C.bullBar : C.bearBar;
+      return b.c >= ref ? C.bullBar : C.bearBar;
+    });
+    const volColors = bars.map(b => b.c >= b.o ? 'rgba(74,222,128,0.18)' : 'rgba(248,113,113,0.2)');
+
+    updateBadge('badge-weekly', closes[closes.length-1], ema50[ema50.length-1]);
+
+    _chartInstances['weekly'] = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label:'Volume',  data:volumes, backgroundColor:volColors, borderWidth:0, yAxisID:'y_vol', order:5 },
+          { label:'Preço',   data:closes,  backgroundColor:barColors, borderColor:'transparent', borderWidth:0, order:2 },
+          { label:'EMA 20W', data:ema20,   type:'line', borderColor:C.ema1, backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.4, spanGaps:true, order:1 },
+          { label:'EMA 50W', data:ema50,   type:'line', borderColor:C.ema2, backgroundColor:'transparent', borderWidth:2,   pointRadius:0, tension:0.4, spanGaps:true, order:0 },
+          { label:'EMA 200W',data:ema200,  type:'line', borderColor:'rgba(255,255,255,0.2)', backgroundColor:'transparent', borderWidth:1.5, borderDash:[6,4], pointRadius:0, tension:0.4, spanGaps:true, order:-1 },
+          { label:'RSI 14',  data:rsi14,   type:'line', borderColor:'rgba(255,159,26,0.6)', backgroundColor:'transparent', borderWidth:1.2, pointRadius:0, tension:0.4, spanGaps:true, yAxisID:'y2', order:-2 },
+          { label:'RSI 70',  data:new Array(labels.length).fill(70), type:'line', borderColor:'rgba(248,113,113,0.2)', backgroundColor:'transparent', borderWidth:1, borderDash:[3,5], pointRadius:0, yAxisID:'y2', order:-3 },
+          { label:'RSI 30',  data:new Array(labels.length).fill(30), type:'line', borderColor:'rgba(74,222,128,0.2)', backgroundColor:'transparent', borderWidth:1, borderDash:[3,5], pointRadius:0, yAxisID:'y2', order:-3 },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode:'index', intersect:false },
+        plugins: {
+          legend: { display:false },
+          tooltip: {
+            backgroundColor:'#111', borderColor:'rgba(255,255,255,0.12)', borderWidth:1,
+            titleColor:'#888', bodyColor:'#f0f0f0',
+            titleFont:{ family:'Roboto Condensed', size:11 },
+            bodyFont:{ family:'Roboto Condensed', size:12 },
+            callbacks: {
+              title: items => {
+                const d = new Date(bars[items[0].dataIndex].t * 1000);
+                return 'Week ' + d.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+              },
+              label: item => {
+                const idx = item.dataIndex;
+                const lbl = item.dataset.label;
+                if (lbl === 'Preço') {
+                  const e20 = ema20[idx], e50 = ema50[idx], e200 = ema200[idx], p = item.raw;
+                  return ' Fecho: ' + fmtPrice(p) +
+                    (e20 ? ' | EMA20: '+((p-e20)/e20*100).toFixed(1)+'%' : '') +
+                    (e50 ? ' | EMA50: '+((p-e50)/e50*100).toFixed(1)+'%' : '') +
+                    (e200 ? ' | EMA200: '+((p-e200)/e200*100).toFixed(1)+'%' : '');
+                }
+                if (lbl === 'EMA 20W')  return ' EMA 20W: ' + fmtPrice(item.raw);
+                if (lbl === 'EMA 50W')  return ' EMA 50W: ' + fmtPrice(item.raw);
+                if (lbl === 'EMA 200W') return ' EMA 200W: ' + fmtPrice(item.raw);
+                if (lbl === 'RSI 14')  return item.raw != null ? ` RSI: ${item.raw.toFixed(1)}${item.raw > 70 ? ' ⚠ overbought' : item.raw < 30 ? ' ⚠ oversold' : ''}` : '';
+                if (lbl === 'Volume')  return item.raw > 0 ? ` Vol: ${item.raw.toLocaleString('pt-PT', {maximumFractionDigits:0})} BTC` : '';
+                return '';
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid:{ color:'rgba(255,255,255,0.06)' }, ticks:{ color:'#777', font:{ family:'Roboto Condensed', size:10 }, maxTicksLimit:10 } },
+          y: { type:'logarithmic', grid:{ color:'rgba(255,255,255,0.06)' }, ticks:{ color:'#777', font:{ family:'Roboto Condensed', size:10 }, callback: v => v>=1000 ? '$'+(v/1000).toFixed(0)+'k' : '$'+v } },
+          y2: { type:'linear', position:'right', min:0, max:100, grid:{ display:false }, ticks:{ color:'#777', font:{ family:'Roboto Condensed', size:9 }, callback: v => (v===30||v===70) ? v : null }, border:{ color:'rgba(255,255,255,0.08)' } },
+          y_vol: { type:'linear', display:false, min:0, max:maxVol * 9 }
+        }
+      }
+    });
+  }
+
+  // ── MENSAL: SMA 10M + SMA 20M + RSI 14 + Volume ──────────────────────────
+  function buildMonthlyChart(bars, closes, C, canvas) {
+    const sma10   = calcSMA(closes, 10);
+    const sma20   = calcSMA(closes, 20);
+    const rsi14   = calcRSI(closes, 14);
+    const volumes = bars.map(b => b.v || 0);
+    const maxVol  = Math.max(1, ...volumes.filter(v => v > 0));
+    const labels  = bars.map(b => b.label || (() => {
+      const d = new Date(b.t * 1000);
+      return d.toLocaleDateString('pt-PT', {month:'short', year:'2-digit'});
+    })());
+    const barColors = bars.map((b, i) => {
+      const ref = sma20[i];
+      if (!ref) return b.c >= b.o ? C.bullBar : C.bearBar;
+      return b.c >= ref ? C.bullBar : C.bearBar;
+    });
+    const volColors = bars.map(b => b.c >= b.o ? 'rgba(74,222,128,0.18)' : 'rgba(248,113,113,0.2)');
+
+    const lastClose = closes[closes.length-1];
+    const lastSma20 = sma20[sma20.length-1];
+    const elBadge = document.getElementById('badge-monthly');
+    if (elBadge && lastClose && lastSma20) {
+      const pct = ((lastClose - lastSma20) / lastSma20 * 100).toFixed(1);
+      elBadge.className = 'chart-regime-badge ' + (lastClose > lastSma20 ? 'bull' : 'bear');
+      elBadge.textContent = (lastClose > lastSma20 ? t('badge-above') + ' SMA20 +' : t('badge-below') + ' SMA20 ') + pct + '%';
+    }
+
+    _chartInstances['monthly'] = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label:'Volume',  data:volumes, backgroundColor:volColors, borderWidth:0, yAxisID:'y_vol', order:5 },
+          { label:'Preço',   data:closes,  backgroundColor:barColors, borderColor:'transparent', borderWidth:0, order:2 },
+          { label:'SMA 10M', data:sma10,   type:'line', borderColor:C.ema1, backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.4, spanGaps:true, order:1 },
+          { label:'SMA 20M', data:sma20,   type:'line', borderColor:C.ema2, backgroundColor:'transparent', borderWidth:2,   pointRadius:0, tension:0.4, spanGaps:true, order:0 },
+          { label:'RSI 14',  data:rsi14,   type:'line', borderColor:'rgba(255,159,26,0.6)', backgroundColor:'transparent', borderWidth:1.2, pointRadius:0, tension:0.4, spanGaps:true, yAxisID:'y2', order:-1 },
+          { label:'RSI 70',  data:new Array(labels.length).fill(70), type:'line', borderColor:'rgba(248,113,113,0.2)',  backgroundColor:'transparent', borderWidth:1, borderDash:[3,5], pointRadius:0, yAxisID:'y2', order:-2 },
+          { label:'RSI 30',  data:new Array(labels.length).fill(30), type:'line', borderColor:'rgba(74,222,128,0.2)', backgroundColor:'transparent', borderWidth:1, borderDash:[3,5], pointRadius:0, yAxisID:'y2', order:-2 },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode:'index', intersect:false },
+        plugins: {
+          legend: { display:false },
+          tooltip: {
+            backgroundColor:'#111', borderColor:'rgba(255,255,255,0.12)', borderWidth:1,
+            titleColor:'#888', bodyColor:'#f0f0f0',
+            titleFont:{ family:'Roboto Condensed', size:11 },
+            bodyFont:{ family:'Roboto Condensed', size:12 },
+            callbacks: {
+              title: items => 'Mês ' + (bars[items[0].dataIndex].label || labels[items[0].dataIndex]),
+              label: item => {
+                const idx = item.dataIndex;
+                const lbl = item.dataset.label;
+                if (lbl === 'Preço') {
+                  const s10 = sma10[idx], s20 = sma20[idx], p = item.raw;
+                  return ' Fecho: ' + fmtPrice(p) +
+                    (s10 ? ' | SMA10: '+((p-s10)/s10*100).toFixed(1)+'%' : '') +
+                    (s20 ? ' | SMA20: '+((p-s20)/s20*100).toFixed(1)+'%' : '');
+                }
+                if (lbl === 'SMA 10M') return ' SMA 10M: ' + fmtPrice(item.raw);
+                if (lbl === 'SMA 20M') return ' SMA 20M: ' + fmtPrice(item.raw);
+                if (lbl === 'RSI 14')  return item.raw != null ? ` RSI: ${item.raw.toFixed(1)}${item.raw > 70 ? ' ⚠ overbought' : item.raw < 30 ? ' ⚠ oversold' : ''}` : '';
+                if (lbl === 'Volume')  return item.raw > 0 ? ` Vol: ${item.raw.toLocaleString('pt-PT', {maximumFractionDigits:0})} BTC` : '';
+                return '';
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid:{ color:'rgba(255,255,255,0.06)' }, ticks:{ color:'#777', font:{ family:'Roboto Condensed', size:10 }, maxTicksLimit:10 } },
+          y: { type:'logarithmic', grid:{ color:'rgba(255,255,255,0.06)' }, ticks:{ color:'#777', font:{ family:'Roboto Condensed', size:10 }, callback: v => v>=1000 ? '$'+(v/1000).toFixed(0)+'k' : '$'+v } },
+          y2: { type:'linear', position:'right', min:0, max:100, grid:{ display:false }, ticks:{ color:'#777', font:{ family:'Roboto Condensed', size:9 }, callback: v => (v===30||v===70) ? v : null }, border:{ color:'rgba(255,255,255,0.08)' } },
+          y_vol: { type:'linear', display:false, min:0, max:maxVol * 9 }
+        }
+      }
+    });
+  }
+
+  // ── ANUAL: Média anual + SMA 4 anos + Volume ──────────────────────────────
+  function buildYearlyChart(bars, closes, C, canvas) {
+    const avgs    = bars.map(b => b.avg || b.c);
+    const sma4    = calcSMA(closes, 4);
+    const volumes = bars.map(b => b.v || 0);
+    const maxVol  = Math.max(1, ...volumes.filter(v => v > 0));
+    const labels  = bars.map(b => b.label || String(new Date(b.t*1000).getFullYear()));
+    const barColors = bars.map((b, i) => {
+      const ref = sma4[i];
+      if (!ref) return b.c >= b.o ? C.bullBar : C.bearBar; // sem SMA4: cor baseada em open/close
+      return b.c >= ref ? C.bullBar : C.bearBar;
+    });
+    const volColors = bars.map(b => b.c >= b.o ? 'rgba(74,222,128,0.18)' : 'rgba(248,113,113,0.2)');
+
+    updateBadgeAnual('badge-yearly', closes[closes.length-1], sma4[sma4.length-1]);
+
+    _chartInstances['yearly'] = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label:'Volume',     data:volumes, backgroundColor:volColors, borderWidth:0, yAxisID:'y_vol', order:5 },
+          { label:'Preço',      data:closes,  backgroundColor:barColors, borderColor:'transparent', borderWidth:0, order:2 },
+          { label:'Média anual',data:avgs,    type:'line', borderColor:C.ema1, backgroundColor:'transparent', borderWidth:1.5, pointRadius:3, pointBackgroundColor:C.ema1, tension:0.3, spanGaps:true, order:1 },
+          { label:'SMA 4 anos', data:sma4,    type:'line', borderColor:C.ema2, backgroundColor:'transparent', borderWidth:2,   pointRadius:0, tension:0.4, spanGaps:true, order:0 },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode:'index', intersect:false },
+        plugins: {
+          legend: { display:false },
+          tooltip: {
+            backgroundColor:'#111', borderColor:'rgba(255,255,255,0.12)', borderWidth:1,
+            titleColor:'#888', bodyColor:'#f0f0f0',
+            titleFont:{ family:'Roboto Condensed', size:11 },
+            bodyFont:{ family:'Roboto Condensed', size:12 },
+            callbacks: {
+              title: items => 'Ano ' + (labels[items[0].dataIndex] || ''),
+              label: item => {
+                const idx = item.dataIndex;
+                const lbl = item.dataset.label;
+                if (lbl === 'Preço') {
+                  const s4 = sma4[idx], p = item.raw;
+                  return ' Fecho: ' + fmtPrice(p) + (s4 ? ' | SMA4A: '+((p-s4)/s4*100).toFixed(1)+'%' : '');
+                }
+                if (lbl === 'Média anual') return ' Média: ' + fmtPrice(item.raw);
+                if (lbl === 'SMA 4 anos')  return ' SMA 4A: ' + fmtPrice(item.raw);
+                if (lbl === 'Volume')       return item.raw > 0 ? ` Vol: ${item.raw.toLocaleString('pt-PT', {maximumFractionDigits:0})} BTC` : '';
+                return '';
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid:{ color:'rgba(255,255,255,0.06)' }, ticks:{ color:'#777', font:{ family:'Roboto Condensed', size:10 }, maxTicksLimit:12 } },
+          y: { type:'logarithmic', grid:{ color:'rgba(255,255,255,0.06)' }, ticks:{ color:'#777', font:{ family:'Roboto Condensed', size:10 }, callback: v => v>=1000 ? '$'+(v/1000).toFixed(0)+'k' : '$'+v } },
+          y_vol: { type:'linear', display:false, min:0, max:maxVol * 9 }
+        }
+      }
+    });
+  }
+
+  // ── SPARKLINE HERO (24h) ──
+  async function loadHeroSparkline() {
+    try {
+      const r = await fetch('/api/ohlc/h24?t=' + Date.now());
+      const d = await r.json();
+      if (!d.bars || !d.bars.length) return;
+
+      const bars   = d.bars;
+      const closes = bars.map(b => b.c);
+      const first  = closes[0];
+      const last   = closes[closes.length - 1];
+      const isUp   = last >= first;
+
+      const canvas = document.getElementById('hero-sparkline');
+      if (!canvas) return;
+
+      if (_chartInstances['hero-sparkline']) {
+        _chartInstances['hero-sparkline'].destroy();
+        delete _chartInstances['hero-sparkline'];
+      }
+
+      const ctx = canvas.getContext('2d');
+      const h   = canvas.parentElement?.offsetHeight || 160;
+      const grad = ctx.createLinearGradient(0, 0, 0, h);
+      if (isUp) {
+        grad.addColorStop(0, 'rgba(255,159,26,0.12)');
+        grad.addColorStop(1, 'rgba(255,159,26,0)');
+      } else {
+        grad.addColorStop(0, 'rgba(255,255,255,0.06)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+      }
+
+      // Popular High / Low 24h
+      const h24High = Math.max(...bars.map(b => b.h));
+      const h24Low  = Math.min(...bars.map(b => b.l));
+      const hiEl = document.getElementById('h24-high');
+      const loEl = document.getElementById('h24-low');
+      if (hiEl) hiEl.textContent = '▲ $' + h24High.toLocaleString('pt-PT', {maximumFractionDigits:0});
+      if (loEl) loEl.textContent = '▼ $' + h24Low.toLocaleString('pt-PT', {maximumFractionDigits:0});
+
+      _chartInstances['hero-sparkline'] = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: bars.map((_, i) => i),
+          datasets: [{
+            data: closes,
+            borderColor: isUp ? 'rgba(255,159,26,0.4)' : 'rgba(255,255,255,0.15)',
+            backgroundColor: grad,
+            borderWidth: 1,
+            pointRadius: 0,
+            tension: 0.45,
+            fill: true,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 1200, easing: 'easeInOutQuart' },
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          scales: {
+            x: { display: false },
+            y: { display: false, grace: '10%' }
+          }
+        }
+      });
+    } catch(e) { console.warn('hero sparkline:', e); }
+  }
+
   // ── PREÇOS AO VIVO ──
   async function loadPrices() {
     try {
-      const r = await fetch('/api/prices');
+      const r = await fetch('/api/prices?t=' + Date.now());
       const d = await r.json();
 
-      if (d.btc_usd)
+      const locale = _lang === 'pt' ? 'pt-PT' : 'en-US';
+      if (d.btc_usd) {
         document.getElementById('btc-price').textContent =
-          '$' + d.btc_usd.toLocaleString('pt-PT', { maximumFractionDigits: 0 });
+          '$' + d.btc_usd.toLocaleString(locale, { maximumFractionDigits: 0 });
+        updateCycleLive(d.btc_usd);
+      }
 
       if (d.btc_change_24h !== null && d.btc_change_24h !== undefined)
         setBadge(document.getElementById('btc-badge'), d.btc_change_24h);
@@ -1056,23 +1922,28 @@
 
       if (d.eth_btc)
         document.getElementById('eth-btc').textContent = d.eth_btc.toFixed(5) + ' BTC';
+      if (d.eth_usd)
+        document.getElementById('eth-usd').textContent = '$' + d.eth_usd.toLocaleString(locale, {maximumFractionDigits: 2});
 
       if (d.gold_btc)
         document.getElementById('gold-btc').textContent = d.gold_btc.toFixed(5) + ' BTC';
+      if (d.gold_usd)
+        document.getElementById('gold-usd').textContent = '$' + d.gold_usd.toLocaleString(locale, {maximumFractionDigits: 2}) + ' /oz';
 
       if (d.crude_btc) {
         document.getElementById('crude-btc').textContent = d.crude_btc.toFixed(5) + ' BTC';
         document.getElementById('crude-desc').textContent =
-          d.crude_usd ? '$' + d.crude_usd.toFixed(1) + ' / barril (WTI)' : 'Petróleo WTI';
+          d.crude_usd ? '$' + d.crude_usd.toFixed(1) + ' / barrel' : 'WTI Crude';
       }
 
+      const loc = _lang === 'pt' ? 'pt-PT' : 'en-GB';
       document.getElementById('updated').textContent = d.updated ||
-        new Date().toLocaleString('pt-PT', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+        new Date().toLocaleString(loc, {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
     } catch(e) {
-      console.warn('Preços falharam:', e);
-      // Mesmo quando falha, atualizar timestamp para mostrar que tentou
+      console.warn('Prices failed:', e);
+      const loc = _lang === 'pt' ? 'pt-PT' : 'en-GB';
       document.getElementById('updated').textContent =
-        new Date().toLocaleString('pt-PT', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+        new Date().toLocaleString(loc, {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
     }
   }
 
@@ -1084,25 +1955,23 @@
 
   async function tickBTC() {
     try {
-      const r = await fetch('/api/btc-tick');
+      const r = await fetch('/api/btc-tick?t=' + Date.now());
       const d = await r.json();
       if (d.btc_usd) {
         const el = document.getElementById('btc-price');
-        const newText = '$' + d.btc_usd.toLocaleString('pt-PT', { maximumFractionDigits: 0 });
-        if (el.textContent !== newText) {
-          animatePrice(el);
-          el.textContent = newText;
-        }
+        const locale = _lang === 'pt' ? 'pt-PT' : 'en-US';
+        const newText = '$' + d.btc_usd.toLocaleString(locale, { maximumFractionDigits: 0 });
+        // Anima sempre — pulso visual a cada 3s; atualiza texto se mudou
+        animatePrice(el);
+        if (el.textContent !== newText) el.textContent = newText;
       }
-      if (d.btc_change_24h !== null && d.btc_change_24h !== undefined) {
+      if (d.btc_change_24h !== null && d.btc_change_24h !== undefined)
         setBadge(document.getElementById('btc-badge'), d.btc_change_24h);
-      }
-      // Variação 1h — se disponível no cache do servidor
       if (d.btc_change_1h !== null && d.btc_change_1h !== undefined) {
         const el1h = document.getElementById('btc-badge-1h');
         if (el1h) setBadge(el1h, d.btc_change_1h);
       }
-    } catch(e) { console.warn('btc-tick falhou:', e); /* próximo tick em 3s */ }
+    } catch(e) { console.warn('btc-tick falhou:', e); }
   }
 
   // ── DATA.JSON ──
@@ -1110,14 +1979,10 @@
     fetch('data.json?t=' + Date.now())
       .then(r => r.json())
       .then(d => {
-        document.getElementById('btc-summary').textContent = d.bitcoin?.summary || '';
         document.getElementById('gold-trend').textContent  = d.gold?.trend || '--';
-        document.getElementById('eth-trend').textContent       = d.eth?.trend || '--';
-        document.getElementById('editorial').textContent       = d.editorial || '--';
+        document.getElementById('eth-trend').textContent   = d.eth?.trend || '--';
       })
-      .catch(() => {
-        document.getElementById('editorial').textContent = 'Sem análise. Corre o generate_data.py.';
-      });
+      .catch(() => {});
   }
 
   // ── PAINEL AEROPORTO ──
@@ -1144,13 +2009,21 @@
     if (!slice.length) return;
 
     rows.innerHTML = slice.map(n => `
-      <div class="flip-row" onclick="window.open('${n.link}','_blank')" style="cursor:pointer">
+      <div class="flip-row" data-href="${n.link.replace(/"/g,'&quot;')}" style="cursor:pointer">
         <div>
           <div class="flip-headline" data-text="${n.title.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}"></div>
           <div class="flip-meta">${n.source} · ${n.date}</div>
         </div>
-        <span class="flip-tag ${n.sentiment}">${n.sentiment==='bullish'?'ALTA':n.sentiment==='bearish'?'BAIXA':'NEUTRO'}</span>
+        <span class="flip-tag ${n.sentiment}">${t('sent-'+n.sentiment)}</span>
       </div>`).join('');
+
+    // Abrir link de forma segura (sem XSS via onclick inline)
+    rows.querySelectorAll('.flip-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const href = row.dataset.href;
+        if (href) window.open(href, '_blank', 'noopener,noreferrer');
+      });
+    });
 
     // linha 0 começa imediatamente, linha 1 após LINE_DELAY, linha 2 após 2×LINE_DELAY
     rows.querySelectorAll('.flip-headline').forEach((el, i) => {
@@ -1168,12 +2041,12 @@
 
   async function loadNews() {
     try {
-      const r = await fetch('/api/news');
+      const r = await fetch('/api/news?t=' + Date.now());
       const data = await r.json();
       allArticles = data.items || [];
       if (!allArticles.length) {
-        document.getElementById('flip-rows').innerHTML = '<div class="flip-row"><div><div class="flip-headline">Sem notícias disponíveis de momento</div></div></div>';
-        document.getElementById('news-updated').textContent = 'indisponível';
+        document.getElementById('flip-rows').innerHTML = '<div class="flip-row"><div><div class="flip-headline">' + t('news-empty') + '</div></div></div>';
+        document.getElementById('news-updated').textContent = '--';
         return;
       }
 
@@ -1181,14 +2054,14 @@
       renderFlipRows(0);
 
       document.getElementById('news-updated').textContent =
-        'atualizado ' + new Date().toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'});
+        t('news-updated') + ' ' + new Date().toLocaleTimeString(_lang === 'pt' ? 'pt-PT' : 'en-GB', {hour:'2-digit', minute:'2-digit'});
 
       // reinicia rotação
       if (flipTimer) clearInterval(flipTimer);
       flipTimer = setInterval(advanceFlip, FLIP_INTERVAL);
 
     } catch(e) {
-      document.getElementById('news-updated').textContent = 'indisponível';
+      document.getElementById('news-updated').textContent = '--';
     }
   }
 
@@ -1196,24 +2069,48 @@
   const INTERVAL = 60;
   let countdown = INTERVAL;
   let agentTick = 0;
+  let ohlcTick  = 0;
   function tickTimer() {
     countdown--;
     agentTick++;
+    ohlcTick++;
+
+    // Actualizar barra de halving em directo (a cada segundo)
+    updateHalvingBar();
+
     if (countdown <= 0) {
       countdown = INTERVAL;
-      loadPrices();
-      loadAnalysis();
-      loadFearGreed();
-      loadNews();
+      // Refresh completo de dados e gráficos dinâmicos
+      loadPrices();       // preços + ciclo live
+      loadAnalysis();     // data.json
+      loadFearGreed();    // fear & greed
+      loadNews();         // notícias
+      loadHeroSparkline(); // sparkline 24h + high/low
       const now = new Date();
-      const ts = now.toLocaleString('pt-PT', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
-      document.getElementById('updated').textContent = ts;
+      const loc = _lang === 'pt' ? 'pt-PT' : 'en-GB';
+      document.getElementById('updated').textContent =
+        now.toLocaleString(loc, {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
     }
-    // Agente IA refresca a cada 2 minutos (120 ticks × 1s) — Groq free tier suporta bem
+
+    // OHLC: a cada 10 min refresca o tab activo e invalida os outros
+    if (ohlcTick >= 600) {
+      ohlcTick = 0;
+      // Invalidar todos os tabs (próxima activação faz reload)
+      ['weekly', 'monthly', 'yearly'].forEach(tf => { delete _chartLoaded[tf]; });
+      // Recarregar imediatamente o tab OHLC activo (se algum estiver aberto)
+      const activePanel = document.querySelector('.chart-panel.active');
+      if (activePanel) {
+        const tf = activePanel.id.replace('panel-', '');
+        if (tf !== 'cycles') loadOHLC(tf);
+      }
+    }
+
+    // Agente IA: a cada 2 min
     if (agentTick >= 120) {
       agentTick = 0;
       loadAgentSummary();
     }
+
     document.getElementById('timer-fill').style.width = ((INTERVAL-countdown)/INTERVAL*100)+'%';
   }
 
@@ -1222,6 +2119,7 @@
   function getPageSnapshot() {
     return {
       price:    document.getElementById('btc-price')?.textContent || '--',
+      change1h: document.getElementById('btc-badge-1h')?.textContent || '--',
       change:   document.getElementById('btc-badge')?.textContent || '--',
       dom:      document.getElementById('btc-dominance')?.textContent || '--',
       fg:       document.getElementById('fg-value')?.textContent || '--',
@@ -1229,7 +2127,6 @@
       ethBtc:   document.getElementById('eth-btc')?.textContent || '--',
       goldBtc:  document.getElementById('gold-btc')?.textContent || '--',
       crudeBtc: document.getElementById('crude-btc')?.textContent || '--',
-      editorial:document.getElementById('editorial')?.textContent || '--',
       halvDays: document.getElementById('halving-days')?.textContent || '--',
       halvPct:  document.getElementById('halving-pct')?.textContent || '--',
     };
@@ -1237,27 +2134,22 @@
 
   async function loadAgentSummary() {
     try {
-      const r = await fetch('/api/agent-summary');
+      const r = await fetch('/api/agent-summary?lang=' + _lang);
       const d = await r.json();
-      document.getElementById('agent-skeleton').style.display = 'none';
+      const skel = document.getElementById('agent-skeleton');
+      if (skel) skel.style.display = 'none';
       const el = document.getElementById('agent-summary');
-      el.style.display = 'block';
-      el.textContent = d.summary || 'Resumo indisponível.';
-      document.getElementById('agent-updated').textContent = 'gerado às ' + (d.generated_at || '--');
-      // Atualizar também o sentimento no hero card com uma frase curta do agente
-      if (d.summary) {
-      const firstSentence = d.summary.split(/[.!?]/).filter(s => s.trim().length > 0)[0]?.trim();
-        if (firstSentence && firstSentence.length > 10) {
-          document.getElementById('btc-summary').textContent = firstSentence + '.';
-        }
+      if (el) {
+        el.style.display = 'block';
+        el.textContent = d.summary || '';
       }
-    } catch(e) {
-      document.getElementById('agent-skeleton').style.display = 'none';
-      const el = document.getElementById('agent-summary');
-      el.style.display = 'block';
-      el.textContent = 'Erro ao carregar resumo do agente.';
-      document.getElementById('agent-updated').textContent = 'erro';
-    }
+      const upd = document.getElementById('agent-updated');
+      if (upd) upd.textContent = d.generated_at || '--';
+      if (d.summary) {
+        const btcSum = document.getElementById('btc-summary');
+        if (btcSum) fitSummary(btcSum, d.summary);
+      }
+    } catch(e) { /* agent panel hidden — skip */ }
   }
 
   const agentHistory = [];
@@ -1315,6 +2207,306 @@
 
   function agentKey(e) { if (e.key === 'Enter') agentAsk(); }
 
+  // ── MAYER MULTIPLE ────────────────────────────────────────────────────────
+  async function loadMayer() {
+    try {
+      const r = await fetch('/api/mayer?t=' + Date.now());
+      const d = await r.json();
+      if (!d.mayer) return;
+      const el  = document.getElementById('mayer-val');
+      const lbl = document.getElementById('mayer-lbl');
+      if (el) {
+        el.textContent = d.mayer.toFixed(3);
+        el.style.color = d.mayer > 2.4 ? 'var(--red)' : d.mayer < 0.8 ? 'var(--btc)' : '#fff';
+      }
+      if (lbl) lbl.textContent = 'SMA200: $' + d.sma200.toLocaleString('pt-PT', {maximumFractionDigits:0});
+    } catch(e) { console.warn('Mayer:', e); }
+  }
+
+  // ── TEMA CLARO / ESCURO ───────────────────────────────────────────────────
+  function toggleTheme() {
+    const isLight = document.body.classList.toggle('light');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    document.getElementById('theme-btn').title = t(isLight ? 'theme-dark' : 'theme-light');
+
+    // Reconstruir gráficos activos com as novas cores
+    // 1. Ciclos
+    if (_chartInstances['cycles']) {
+      _chartInstances['cycles'].destroy();
+      delete _chartInstances['cycles'];
+      buildCycleChart(_cycleCurrentDay);
+      loadPrices(); // repõe o ponto live
+    }
+    // 2. Sparkline
+    loadHeroSparkline();
+    // 3. OHLC tab activo
+    ['weekly','monthly','yearly'].forEach(tf => { delete _chartLoaded[tf]; });
+    const activePanel = document.querySelector('.chart-panel.active');
+    if (activePanel) {
+      const tf = activePanel.id.replace('panel-', '');
+      if (tf !== 'cycles') loadOHLC(tf);
+    }
+  }
+  // Restaurar preferência guardada (theme handled after i18n init)
+  (function() {
+    if (localStorage.getItem('theme') === 'light') {
+      document.body.classList.add('light');
+    }
+  })();
+
+  // ── PT / EN ────────────────────────────────────────────────────────────────
+  const I18N = {
+    en: {
+      'live': 'Live',
+      'updated': 'Last update',
+      'hero-label': 'Bitcoin · USD',
+      'dominance-label': 'BTC Dominance',
+      'high-low-label': 'High / Low 24h',
+      'gold-title': 'Gold in BTC',
+      'eth-title': 'Ethereum in BTC',
+      'oil-title': 'WTI Crude in BTC',
+      'fg-title': 'Fear & Greed Index',
+      'fg-extreme-fear': 'Extreme Fear',
+      'fg-fear': 'Fear',
+      'fg-neutral': 'Neutral',
+      'fg-greed': 'Greed',
+      'fg-extreme-greed': 'Extreme Greed',
+      'fg-yesterday': 'Yesterday',
+      'fg-week': 'Week',
+      'tab-cycles': 'Cycles',
+      'tab-weekly': 'Weekly',
+      'tab-monthly': 'Monthly',
+      'tab-yearly': 'Yearly',
+      'news-label': 'News · Market & Bitcoin',
+      'footer': 'Auto-generated information · Not financial advice',
+      'cycle-label': 'Post-Halving Cycle · April 2024',
+      'halving-start': 'Halving: 19 Apr 2024',
+      'halving-next': 'Next: ~Apr 2028',
+      'cycle-suffix': 'of cycle',
+      'cycle-pct-suffix': '% of cycle',
+      'badge-above': '▲ ABOVE',
+      'badge-below': '▼ BELOW',
+      'loading-weekly': 'Loading weekly data...',
+      'loading-monthly': 'Loading monthly data...',
+      'loading-yearly': 'Loading yearly data...',
+      'theme-dark': 'Dark theme',
+      'theme-light': 'Light theme',
+      'sma-avg': 'Yearly avg',
+      'sma-4y': 'SMA 4 years',
+      'news-updated': 'updated',
+      'news-loading': 'Loading news...',
+      'news-empty': 'No news available at the moment',
+      'badge-since-halving-above': '▲ +{pct}% since halving',
+      'badge-since-halving-below': '▼ {pct}% since halving',
+      'sent-bullish': 'BULLISH',
+      'sent-bearish': 'BEARISH',
+      'sent-neutral': 'NEUTRAL',
+    },
+    pt: {
+      'live': 'Em tempo real',
+      'updated': 'Última atualização',
+      'hero-label': 'Bitcoin · USD',
+      'dominance-label': 'Dominância BTC',
+      'high-low-label': 'High / Low 24h',
+      'gold-title': 'Ouro em BTC',
+      'eth-title': 'Ethereum em BTC',
+      'oil-title': 'Petróleo WTI em BTC',
+      'fg-title': 'Fear & Greed Index',
+      'fg-extreme-fear': 'Medo Extremo',
+      'fg-fear': 'Medo',
+      'fg-neutral': 'Neutro',
+      'fg-greed': 'Ganância',
+      'fg-extreme-greed': 'Ganância Extrema',
+      'fg-yesterday': 'Ontem',
+      'fg-week': 'Semana',
+      'tab-cycles': 'Ciclos',
+      'tab-weekly': 'Semanal',
+      'tab-monthly': 'Mensal',
+      'tab-yearly': 'Anual',
+      'news-label': 'Notícias · Mercado & Bitcoin',
+      'footer': 'Informação gerada automaticamente · Não constitui conselho financeiro',
+      'cycle-label': 'Ciclo Pós-Halving · Abril 2024',
+      'halving-start': 'Halving: 19 Abr 2024',
+      'halving-next': 'Próximo: ~Abr 2028',
+      'cycle-suffix': 'de ciclo',
+      'cycle-pct-suffix': '% do ciclo',
+      'badge-above': '▲ ACIMA',
+      'badge-below': '▼ ABAIXO',
+      'loading-weekly': 'A carregar dados semanais...',
+      'loading-monthly': 'A carregar dados mensais...',
+      'loading-yearly': 'A carregar dados anuais...',
+      'theme-dark': 'Tema escuro',
+      'theme-light': 'Tema claro',
+      'sma-avg': 'Média anual',
+      'sma-4y': 'SMA 4 anos',
+      'news-updated': 'atualizado',
+      'news-loading': 'a carregar...',
+      'news-empty': 'Sem notícias disponíveis de momento',
+      'badge-since-halving-above': '▲ +{pct}% desde halving',
+      'badge-since-halving-below': '▼ {pct}% desde halving',
+      'sent-bullish': 'ALTA',
+      'sent-bearish': 'BAIXA',
+      'sent-neutral': 'NEUTRO',
+    }
+  };
+  let _lang = localStorage.getItem('lang') || 'en';
+
+  function t(key, vars) {
+    let s = (I18N[_lang] && I18N[_lang][key]) || key;
+    if (vars) Object.keys(vars).forEach(k => { s = s.replace('{'+k+'}', vars[k]); });
+    return s;
+  }
+
+  function switchLang(lang) {
+    _lang = lang;
+    localStorage.setItem('lang', lang);
+    document.getElementById('lang-pt').classList.toggle('active', lang === 'pt');
+    document.getElementById('lang-en').classList.toggle('active', lang === 'en');
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (I18N[lang] && I18N[lang][key]) el.textContent = I18N[lang][key];
+    });
+    // Theme button title
+    const isLight = document.body.classList.contains('light');
+    document.getElementById('theme-btn').title = t(isLight ? 'theme-dark' : 'theme-light');
+    // Update dynamic text
+    updateHalvingBar();
+    // Reload summary in new language
+    loadAgentSummary();
+    // Re-render news tags in new language
+    if (allArticles.length) renderFlipRows(flipIndex);
+    // Update F&G classification label
+    const fgEl = document.getElementById('fg-classification');
+    if (fgEl && fgEl.textContent !== '--') {
+      const fgVal = +document.getElementById('fg-value').textContent;
+      if (!isNaN(fgVal)) fgEl.textContent = t(fgClassify(fgVal));
+    }
+    // Update loading texts
+    ['weekly','monthly','yearly'].forEach(tf => {
+      const el = document.getElementById('loading-'+tf);
+      if (el) el.textContent = t('loading-'+tf);
+    });
+    // Update news status
+    const newsEl = document.getElementById('news-updated');
+    if (newsEl && newsEl.textContent === 'a carregar...') newsEl.textContent = t('news-loading');
+    if (newsEl && newsEl.textContent === 'indisponível') newsEl.textContent = '--';
+  }
+  // Apply default language
+  switchLang(_lang);
+
+  // ── SUMMARY: ajusta a 3 linhas sem cortar frases ─────────────────────────
+  function fitSummary(el, text) {
+    const MAX_LINES = 3;
+    // Mede altura de uma linha com o CSS real do elemento
+    el.textContent = '|';
+    const lineH = el.getBoundingClientRect().height / 1 || 22;
+    const maxH  = lineH * MAX_LINES;
+
+    // Tenta texto completo primeiro
+    el.textContent = text;
+    if (el.scrollHeight <= maxH + lineH * 0.4) return;
+
+    // Divide em frases (termina em . ! ?)
+    const sentences = text.match(/[^.!?]*[.!?]+["']?/g) || [text];
+    let kept = '';
+    for (const s of sentences) {
+      const candidate = kept ? kept + ' ' + s.trim() : s.trim();
+      el.textContent = candidate;
+      if (el.scrollHeight > maxH + lineH * 0.4) break;
+      kept = candidate;
+    }
+    // Se nem a primeira frase cabe, mostra-a na mesma (sem cortar)
+    el.textContent = kept || sentences[0].trim();
+  }
+
+  // ── SCREENSHOT JPG ────────────────────────────────────────────────────────
+  async function captureJPG() {
+    const btn = document.getElementById('screenshot-btn');
+    btn.textContent = '...';
+    btn.disabled = true;
+
+    // 1. Congela animações
+    const freeze = document.createElement('style');
+    freeze.id = '_cap_freeze';
+    freeze.textContent = '* { animation: none !important; transition: none !important; } .live-dot { opacity:1!important; }';
+    document.head.appendChild(freeze);
+
+    // 2. Esconde notícias e botão durante captura
+    const flipboard = document.querySelector('.flipboard');
+    const footer    = document.querySelector('footer');
+    if (flipboard) flipboard.style.display = 'none';
+    if (footer)    footer.style.display    = 'none';
+    btn.style.display = 'none';
+
+    // 3. Substitui cada <canvas> por <img> no DOM (html2canvas não lê canvas Chart.js)
+    const swaps = [];
+    document.querySelectorAll('canvas').forEach(canvas => {
+      try {
+        const dataUrl = canvas.toDataURL('image/png');
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.style.cssText  = canvas.style.cssText;
+        img.style.width    = canvas.offsetWidth  + 'px';
+        img.style.height   = canvas.offsetHeight + 'px';
+        img.style.display  = 'block';
+        canvas.parentNode.insertBefore(img, canvas);
+        canvas.style.display = 'none';
+        swaps.push({ canvas, img });
+      } catch(_) {}
+    });
+
+    await new Promise(r => setTimeout(r, 80));
+
+    try {
+      const root = document.getElementById('root');
+      const raw  = await html2canvas(root, {
+        backgroundColor: '#000000',
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        logging: false,
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        width:  root.scrollWidth,
+        height: root.scrollHeight,
+      });
+
+      const dataUrl  = raw.toDataURL('image/jpeg', 0.95);
+      const filename = 'btc-intel-' + new Date().toISOString().slice(0,10) + '.jpg';
+
+      // 5. Web Share API (móvel) → fallback download
+      if (navigator.canShare) {
+        try {
+          const blob = await (await fetch(dataUrl)).blob();
+          const file = new File([blob], filename, { type: 'image/jpeg' });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: 'Bitcoin Intelligence' });
+            return;
+          }
+        } catch(_) {}
+      }
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = filename;
+      a.click();
+
+    } catch(e) {
+      console.error('captureJPG:', e);
+    } finally {
+      // Restaura tudo
+      swaps.forEach(({ canvas, img }) => {
+        canvas.style.display = '';
+        img.remove();
+      });
+      if (flipboard) flipboard.style.display = '';
+      if (footer)    footer.style.display    = '';
+      btn.style.display = '';
+      document.getElementById('_cap_freeze')?.remove();
+      btn.textContent = '↓ JPG';
+      btn.disabled = false;
+    }
+  }
+
   // ── INIT ──
   const daysSince = calcHalving();
   buildCycleChart(daysSince);
@@ -1323,16 +2515,39 @@
   loadFearGreed();
   loadNews();
   loadAgentSummary();
+  loadMayer();
+  // Sparkline: carrega após layout estar pronto, refresca a cada 5 min
+  setTimeout(loadHeroSparkline, 300);
+  setInterval(loadHeroSparkline, 300000);
+  setInterval(loadMayer, 3600000);  // Mayer actualiza a cada hora
   setInterval(tickBTC, 3000);
   setInterval(tickTimer, 1000);
+
+  // Resize todos os gráficos Chart.js ao redimensionar janela
+  let _resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(_resizeTimer);
+    _resizeTimer = setTimeout(() => {
+      Object.values(_chartInstances).forEach(ch => { if (ch) ch.resize(); });
+    }, 150);
+  });
 </script>
 <script>
-  // Registar PWA Service Worker
+  // Registar PWA Service Worker — force update
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js')
-        .then(reg => console.log('SW registado:', reg.scope))
-        .catch(err => console.warn('SW falhou:', err));
+        .then(reg => {
+          console.log('SW registered:', reg.scope);
+          // Force update if new SW available
+          reg.update();
+          if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        })
+        .catch(err => console.warn('SW failed:', err));
+      // Listen for SW updates
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+      });
     });
   }
 
@@ -1352,16 +2567,16 @@
     banner.id = 'install-banner';
     banner.style.cssText = `
       position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
-      background:#111520; border:1px solid #f7931a; border-radius:12px;
+      background:#111; border:1px solid rgba(255,255,255,0.12); border-radius:2px;
       padding:12px 20px; display:flex; align-items:center; gap:12px;
-      font-family:'Roboto Condensed',sans-serif; font-size:14px; color:#dde3f0;
-      box-shadow:0 4px 20px rgba(0,0,0,0.5); z-index:9999; cursor:pointer;
+      font-family:'Roboto Condensed',sans-serif; font-weight:300; font-size:13px; color:#f0f0f0;
+      box-shadow:0 4px 20px rgba(0,0,0,0.8); z-index:9999; cursor:pointer;
     `;
     banner.innerHTML = `
       <img src="/icons/icon-72.png" width="32" height="32" style="border-radius:8px">
       <span>Instalar como app</span>
-      <button onclick="installApp()" style="background:#f7931a;border:none;border-radius:6px;padding:6px 14px;color:#000;font-weight:700;cursor:pointer;font-family:'Roboto Condensed',sans-serif">Instalar</button>
-      <button onclick="this.closest('#install-banner').remove()" style="background:none;border:none;color:#5a6480;cursor:pointer;font-size:18px;line-height:1">×</button>
+      <button onclick="installApp()" style="background:rgba(247,147,26,0.15);border:1px solid rgba(247,147,26,0.25);border-radius:2px;padding:6px 14px;color:#f7931a;font-weight:400;cursor:pointer;font-family:'Roboto Condensed',sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase">Instalar</button>
+      <button onclick="this.closest('#install-banner').remove()" style="background:none;border:none;color:#777;cursor:pointer;font-size:18px;line-height:1">×</button>
     `;
     document.body.appendChild(banner);
   }
