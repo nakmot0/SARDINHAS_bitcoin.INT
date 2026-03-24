@@ -902,9 +902,9 @@
         <div class="stat-lbl" style="margin-top:4px">High / Low 24h</div>
       </div>
       <div class="stat-item" style="margin-top:14px">
-        <div class="stat-val" id="mayer-val" style="font-size:26px">--</div>
-        <div class="stat-lbl">Mayer Multiple</div>
-        <div style="font-family:'Roboto Condensed',sans-serif;font-weight:300;font-size:10px;color:var(--muted);margin-top:3px" id="mayer-lbl">SMA 200d</div>
+        <div style="font-family:'Roboto Condensed',sans-serif;font-weight:300;font-size:12px;color:var(--btc);line-height:1.6" id="cycle-high-val">▲ --</div>
+        <div style="font-family:'Roboto Condensed',sans-serif;font-weight:300;font-size:12px;color:#f87171;line-height:1.6" id="cycle-low-val">▼ --</div>
+        <div class="stat-lbl" style="margin-top:4px" data-i18n="cycle-range-label">Cycle High / Low</div>
       </div>
     </div>
   </section>
@@ -2208,19 +2208,17 @@
   function agentKey(e) { if (e.key === 'Enter') agentAsk(); }
 
   // ── MAYER MULTIPLE ────────────────────────────────────────────────────────
-  async function loadMayer() {
+  async function loadCycleStats() {
     try {
-      const r = await fetch('/api/mayer?t=' + Date.now());
+      const r = await fetch('/api/cycle-stats?t=' + Date.now());
       const d = await r.json();
-      if (!d.mayer) return;
-      const el  = document.getElementById('mayer-val');
-      const lbl = document.getElementById('mayer-lbl');
-      if (el) {
-        el.textContent = d.mayer.toFixed(3);
-        el.style.color = d.mayer > 2.4 ? 'var(--red)' : d.mayer < 0.8 ? 'var(--btc)' : '#fff';
-      }
-      if (lbl) lbl.textContent = 'SMA200: $' + d.sma200.toLocaleString('pt-PT', {maximumFractionDigits:0});
-    } catch(e) { console.warn('Mayer:', e); }
+      if (!d.cycle_high) return;
+      const fmtK = v => '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'K' : v.toFixed(0));
+      const hiEl = document.getElementById('cycle-high-val');
+      const loEl = document.getElementById('cycle-low-val');
+      if (hiEl) hiEl.textContent = '▲ ' + fmtK(d.cycle_high) + '  ' + d.cycle_high_date;
+      if (loEl) loEl.textContent = '▼ ' + fmtK(d.cycle_low)  + '  ' + d.cycle_low_date;
+    } catch(e) { console.warn('CycleStats:', e); }
   }
 
   // ── TEMA CLARO / ESCURO ───────────────────────────────────────────────────
@@ -2301,6 +2299,7 @@
       'sent-bullish': 'BULLISH',
       'sent-bearish': 'BEARISH',
       'sent-neutral': 'NEUTRAL',
+      'cycle-range-label': 'Cycle High / Low',
     },
     pt: {
       'live': 'Em tempo real',
@@ -2347,6 +2346,7 @@
       'sent-bullish': 'ALTA',
       'sent-bearish': 'BAIXA',
       'sent-neutral': 'NEUTRO',
+      'cycle-range-label': 'Máx/Mín do Ciclo',
     }
   };
   let _lang = localStorage.getItem('lang') || 'en';
@@ -2515,11 +2515,11 @@
   loadFearGreed();
   loadNews();
   loadAgentSummary();
-  loadMayer();
+  loadCycleStats();
   // Sparkline: carrega após layout estar pronto, refresca a cada 5 min
   setTimeout(loadHeroSparkline, 300);
   setInterval(loadHeroSparkline, 300000);
-  setInterval(loadMayer, 3600000);  // Mayer actualiza a cada hora
+  setInterval(loadCycleStats, 3600000);
   setInterval(tickBTC, 3000);
   setInterval(tickTimer, 1000);
 
