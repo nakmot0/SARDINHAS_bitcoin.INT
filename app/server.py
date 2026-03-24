@@ -335,16 +335,35 @@ def fetch_prices():
         if result.get("btc_usd") and result.get("eth_btc"):
             result["eth_usd"] = round(result["btc_usd"] * result["eth_btc"], 2)
 
-    # ── Petróleo WTI: Stooq (rápido, sem API key, funciona em cloud) ──────────
+    # ── Petróleo WTI: Yahoo Finance (primário, funciona em cloud) ────────────
     crude_usd = None
     try:
-        crude_usd = stooq_val("cl.f", 40, 200)
-        if crude_usd:
-            logger.info(f"WTI (Stooq cl.f): ${crude_usd:.1f}")
+        ry = requests.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/CL=F"
+            "?interval=1d&range=5d",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        )
+        ry.raise_for_status()
+        dy = ry.json()
+        closes = dy["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+        closes = [c for c in closes if c is not None]
+        if closes:
+            crude_usd = round(closes[-1], 2)
+            logger.info(f"WTI (Yahoo): ${crude_usd:.1f}")
     except Exception as e:
-        logger.warning(f"Stooq WTI: {e}")
+        logger.warning(f"Yahoo WTI: {e}")
 
-    # Fallback WTI: EIA DEMO_KEY (lento mas funciona)
+    # Fallback WTI: Stooq
+    if not crude_usd:
+        try:
+            crude_usd = stooq_val("cl.f", 40, 200)
+            if crude_usd:
+                logger.info(f"WTI (Stooq cl.f): ${crude_usd:.1f}")
+        except Exception as e:
+            logger.warning(f"Stooq WTI: {e}")
+
+    # Fallback WTI: EIA DEMO_KEY
     if not crude_usd:
         try:
             r = requests.get(
@@ -1169,9 +1188,9 @@ OHLC_TTL = {"weekly": 3600, "monthly": 7200, "yearly": 86400}
 def api_ohlc(timeframe):
     """
     OHLC histórico BTC com fontes por prioridade:
-      weekly  → Kraken primary (interval=10080 min), CryptoCompare fallback, Binance last resort
-      monthly → CryptoCompare primary (aggregate=30), Binance fallback
-      yearly  → CryptoCompare primary (aggregate=365), Binance fallback
+      weekly  → Kraken primary (interval=10080 min), Binance fallback, CryptoCompare last resort
+      monthly → Binance primary (1M interval), CryptoCompare fallback
+      yearly  → Binance primary (1M → group by year), CryptoCompare fallback
     """
     if timeframe not in ("weekly", "monthly", "yearly"):
         return jsonify({"error": "timeframe inválido"}), 400
@@ -1225,7 +1244,85 @@ def api_ohlc(timeframe):
             errors.append(f"Kraken: {e}")
             bars = None
 
-    # ── 2. CRYPTOCOMPARE — mensal/anual (primary) e semanal (fallback) ─────────
+    # ── 2. BINANCE — mensal/anual (primary), semanal (fallback) ──────────────
+    if bars is None:
+        try:
+            BASE_BN = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT"
+            if timeframe == "weekly":
+                url_bn = f"{BASE_BN}&interval=1w&limit=250"
+            elif timeframe == "monthly":
+                url_bn = f"{BASE_BN}&interval=1M&limit=96"
+            else:
+                url_bn = f"{BASE_BN}&interval=1M&limit=180"
+
+            r = requests.get(url_bn, headers=H, timeout=15)
+            r.raise_for_status()
+            data = r.json()
+            if not data or not isinstance(data, list):
+                raise ValueError("resposta Binance inválida")
+
+            def lbl_bn(ts_ms, tf):
+                dt = datetime.utcfromtimestamp(ts_ms / 1000)
+                if tf == "weekly":
+                    return dt.strftime("%d %b %y")
+                elif tf == "monthly":
+                    return dt.strftime("%b %Y")
+                else:
+                    return str(dt.year)
+
+            if timeframe in ("weekly", "monthly"):
+                bars = []
+                for c in data:
+                    cl = float(c[4])
+                    if cl <= 0:
+                        continue
+                    bars.append(
+                        {
+                            "t": int(c[0]) // 1000,
+                            "o": round(float(c[1]), 2),
+                            "h": round(float(c[2]), 2),
+                            "l": round(float(c[3]), 2),
+                            "c": round(cl, 2),
+                            "v": round(float(c[5]), 2),
+                            "avg": round((float(c[1]) + cl) / 2, 2),
+                            "label": lbl_bn(int(c[0]), timeframe),
+                        }
+                    )
+            else:
+                # yearly: aggregate monthly candles by year
+                yearly_d = _dd(list)
+                for c in data:
+                    dt = datetime.utcfromtimestamp(int(c[0]) / 1000)
+                    yearly_d[dt.year].append(c)
+                bars = []
+                for year in sorted(yearly_d.keys()):
+                    yc = yearly_d[year]
+                    if not yc:
+                        continue
+                    cl = float(yc[-1][4])
+                    if cl <= 0:
+                        continue
+                    bars.append(
+                        {
+                            "t": int(yc[0][0]) // 1000,
+                            "o": round(float(yc[0][1]), 2),
+                            "h": round(max(float(c[2]) for c in yc), 2),
+                            "l": round(min(float(c[3]) for c in yc), 2),
+                            "c": round(cl, 2),
+                            "v": round(sum(float(c[5]) for c in yc), 2),
+                            "avg": round(sum(float(c[4]) for c in yc) / len(yc), 2),
+                            "label": str(year),
+                        }
+                    )
+
+            if not bars:
+                raise ValueError("Binance retornou 0 barras")
+            logger.info(f"OHLC {timeframe}: {len(bars)} barras via Binance")
+        except Exception as e:
+            errors.append(f"Binance: {e}")
+            bars = None
+
+    # ── 3. CRYPTOCOMPARE — fallback ────────────────────────────────────────────
     if bars is None:
         try:
             BASE_CC = (
@@ -1273,87 +1370,6 @@ def api_ohlc(timeframe):
             logger.info(f"OHLC {timeframe}: {len(bars)} barras via CryptoCompare")
         except Exception as e:
             errors.append(f"CryptoCompare: {e}")
-            bars = None
-
-    # ── 3. BINANCE — last resort ───────────────────────────────────────────────
-    if bars is None:
-        try:
-            BASE_BN = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT"
-            if timeframe == "weekly":
-                url_bn = f"{BASE_BN}&interval=1w&limit=250"
-            elif timeframe == "monthly":
-                url_bn = f"{BASE_BN}&interval=1M&limit=84"
-            else:
-                url_bn = f"{BASE_BN}&interval=1M&limit=156"
-
-            r = requests.get(url_bn, headers=H, timeout=15)
-            r.raise_for_status()
-            data = r.json()
-            if not data or not isinstance(data, list):
-                raise ValueError("resposta Binance inválida")
-
-            def lbl_bn(ts_ms, tf):
-                dt = datetime.utcfromtimestamp(ts_ms / 1000)
-                if tf == "weekly":
-                    return dt.strftime("%d %b %y")
-                elif tf == "monthly":
-                    return dt.strftime("%b %Y")
-                else:
-                    return str(dt.year)
-
-            if timeframe in ("weekly", "monthly"):
-                bars = []
-                for c in data:
-                    cl = float(c[4])
-                    if cl <= 0:
-                        continue
-                    bars.append(
-                        {
-                            "t": int(c[0]) // 1000,
-                            "o": round(float(c[1]), 2),
-                            "h": round(float(c[2]), 2),
-                            "l": round(float(c[3]), 2),
-                            "c": round(cl, 2),
-                            "v": round(float(c[5]), 2),
-                            "avg": round((float(c[1]) + cl) / 2, 2),
-                            "label": lbl_bn(int(c[0]), timeframe),
-                        }
-                    )
-            else:
-                from collections import defaultdict as _dd3
-
-                yearly_d = _dd3(list)
-                for c in data:
-                    dt = datetime.utcfromtimestamp(int(c[0]) / 1000)
-                    yearly_d[dt.year].append(c)
-                bars = []
-                for year in sorted(yearly_d.keys()):
-                    yc = yearly_d[year]
-                    if not yc:
-                        continue
-                    cl = float(yc[-1][4])
-                    if cl <= 0:
-                        continue
-                    bars.append(
-                        {
-                            "t": int(yc[0][0]) // 1000,
-                            "o": round(float(yc[0][1]), 2),
-                            "h": round(max(float(c[2]) for c in yc), 2),
-                            "l": round(min(float(c[3]) for c in yc), 2),
-                            "c": round(cl, 2),
-                            "v": round(sum(float(c[5]) for c in yc), 2),
-                            "avg": round(sum(float(c[4]) for c in yc) / len(yc), 2),
-                            "label": str(year),
-                        }
-                    )
-
-            if not bars:
-                raise ValueError("Binance retornou 0 barras")
-            logger.info(
-                f"OHLC {timeframe}: {len(bars)} barras via Binance (last resort)"
-            )
-        except Exception as e:
-            errors.append(f"Binance: {e}")
             bars = None
 
     if not bars:
