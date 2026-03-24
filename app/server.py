@@ -771,9 +771,11 @@ def build_smart_summary(lang="pt"):
     fg_val = int(fg.get("value", 50))
     fg_label = fg.get("classification", "")
 
-    mayer_cache = _ohlc_cache.get("mayer", {}).get("data", {})
-    mayer = mayer_cache.get("mayer")
-    mayer_sma = mayer_cache.get("sma200")
+    cycle_cache = _ohlc_cache.get("cycle_stats", {}).get("data", {})
+    cycle_high = cycle_cache.get("cycle_high")
+    cycle_low  = cycle_cache.get("cycle_low")
+    cycle_high_date = cycle_cache.get("cycle_high_date", "")
+    cycle_low_date  = cycle_cache.get("cycle_low_date", "")
 
     halving_date = datetime(2024, 4, 19)
     cycle_day = (datetime.now() - halving_date).days
@@ -904,40 +906,30 @@ def build_smart_summary(lang="pt"):
     else:
         dom_line = ""
 
-    # ── Mayer Multiple ─────────────────────────────────────────────────────────
-    if mayer:
-        if mayer > 2.4:
-            mayer_line = (
-                f"Mayer Multiple at {mayer:.2f} (SMA200: ${mayer_sma:,.0f}) signals extreme historical overvaluation — high correction risk."
+    # ── Máximo / Mínimo do ciclo ────────────────────────────────────────────────
+    if cycle_high and cycle_low and btc:
+        pct_from_high = round((btc - cycle_high) / cycle_high * 100, 1)
+        pct_from_low  = round((btc - cycle_low)  / cycle_low  * 100, 1)
+        if pct_from_high >= -5:
+            cycle_stats_line = (
+                f"Price is near the cycle high of ${cycle_high:,.0f} ({cycle_high_date}), only {abs(pct_from_high):.1f}% below the peak."
                 if en else
-                f"O Mayer Multiple em {mayer:.2f} (SMA200: ${mayer_sma:,.0f}) assinala sobre-valorização histórica extrema — risco de correcção elevado."
+                f"O preço está próximo do máximo do ciclo de ${cycle_high:,.0f} ({cycle_high_date}), apenas {abs(pct_from_high):.1f}% abaixo do pico."
             )
-        elif mayer > 1.5:
-            mayer_line = (
-                f"Mayer Multiple at {mayer:.2f} places price clearly above the SMA200 — a position of strength but with growing risk."
+        elif pct_from_high < -30:
+            cycle_stats_line = (
+                f"Price is {abs(pct_from_high):.0f}% below the cycle high (${cycle_high:,.0f}, {cycle_high_date}) — currently in drawdown, +{pct_from_low:.0f}% above cycle low."
                 if en else
-                f"O Mayer Multiple em {mayer:.2f} situa o preço claramente acima da SMA200 — posição de força mas com risco crescente."
-            )
-        elif mayer < 0.8:
-            mayer_line = (
-                f"Mayer Multiple at {mayer:.2f} indicates price below SMA200 (${mayer_sma:,.0f}) — historically a favourable accumulation zone."
-                if en else
-                f"O Mayer Multiple em {mayer:.2f} indica preço abaixo da SMA200 (${mayer_sma:,.0f}) — zona historicamente favorável à acumulação."
-            )
-        elif mayer < 1.0:
-            mayer_line = (
-                f"Mayer Multiple at {mayer:.2f} shows price testing the SMA200 from below — a critical support to watch."
-                if en else
-                f"O Mayer Multiple em {mayer:.2f} mostra o preço a testar a SMA200 de baixo — suporte crítico a monitorizar."
+                f"O preço está {abs(pct_from_high):.0f}% abaixo do máximo do ciclo (${cycle_high:,.0f}, {cycle_high_date}) — em drawdown, +{pct_from_low:.0f}% acima do mínimo."
             )
         else:
-            mayer_line = (
-                f"Mayer Multiple at {mayer:.2f} places price near historical fair value (SMA200: ${mayer_sma:,.0f})."
+            cycle_stats_line = (
+                f"Cycle high: ${cycle_high:,.0f} ({cycle_high_date}). Cycle low: ${cycle_low:,.0f} ({cycle_low_date}). Current price is {abs(pct_from_high):.0f}% below the peak."
                 if en else
-                f"O Mayer Multiple em {mayer:.2f} posiciona o preço próximo do fair value histórico (SMA200: ${mayer_sma:,.0f})."
+                f"Máximo do ciclo: ${cycle_high:,.0f} ({cycle_high_date}). Mínimo: ${cycle_low:,.0f} ({cycle_low_date}). Preço actual {abs(pct_from_high):.0f}% abaixo do pico."
             )
     else:
-        mayer_line = ""
+        cycle_stats_line = ""
 
     # ── Posição no ciclo ───────────────────────────────────────────────────────
     if cycle_day < 365:
@@ -973,8 +965,8 @@ def build_smart_summary(lang="pt"):
     if fg_val < 45: score -= 1
     if bullish_n > bearish_n: score += 1
     if bearish_n > bullish_n: score -= 1
-    if mayer and mayer > 1.2: score += 1
-    if mayer and mayer < 0.9: score -= 1
+    if cycle_high and btc and btc >= cycle_high * 0.9: score += 1
+    if cycle_low and btc and btc <= cycle_low * 1.1: score -= 1
 
     if score >= 2:
         conclusion = (
@@ -997,7 +989,7 @@ def build_smart_summary(lang="pt"):
 
     parts = [price_line, news_line, fg_line]
     if dom_line: parts.append(dom_line)
-    if mayer_line: parts.append(mayer_line)
+    if cycle_stats_line: parts.append(cycle_stats_line)
     parts.append(cycle_line)
     parts.append(conclusion)
     return " ".join(parts)
@@ -1387,37 +1379,42 @@ def api_ohlc(timeframe):
     return jsonify(result), 200
 
 
-@app.route("/api/mayer")
-def api_mayer():
-    """Mayer Multiple = preço actual / SMA 200 dias. Indicador clássico de ciclo BTC."""
-    cached = _ohlc_cache.get("mayer")
+HALVING_4_MS = 1713484800000  # 19 Abril 2024
+
+
+@app.route("/api/cycle-stats")
+def api_cycle_stats():
+    """Máximo e mínimo de BTC desde o halving de Abril 2024 (ciclo actual)."""
+    cached = _ohlc_cache.get("cycle_stats")
     if cached and (time.time() - cached["ts"]) < 3600:
         return jsonify(cached["data"]), 200
-    H = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
-    closes = None
 
-    # Primary: Binance
+    H = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+    candles = None
+
+    # Primary: Binance — velas diárias desde o halving
     try:
         r = requests.get(
-            "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=201",
+            f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d"
+            f"&startTime={HALVING_4_MS}&limit=1000",
             headers=H,
             timeout=15,
         )
         r.raise_for_status()
         data = r.json()
-        if not data or len(data) < 201:
-            raise ValueError("dados insuficientes")
-        closes = [float(c[4]) for c in data]
-        logger.info("Mayer: dados via Binance")
+        if not data or not isinstance(data, list):
+            raise ValueError("resposta inválida")
+        candles = [(int(c[0]) // 1000, float(c[2]), float(c[3])) for c in data]
+        logger.info(f"CycleStats: {len(candles)} dias via Binance")
     except Exception as e:
-        logger.warning(f"Mayer Binance falhou ({e}), a tentar CryptoCompare...")
+        logger.warning(f"CycleStats Binance: {e}")
 
     # Fallback: CryptoCompare
-    if closes is None:
+    if candles is None:
         try:
             rc = requests.get(
                 "https://min-api.cryptocompare.com/data/v2/histoday"
-                "?fsym=BTC&tsym=USD&limit=201",
+                "?fsym=BTC&tsym=USD&limit=800",
                 headers=H,
                 timeout=15,
             )
@@ -1425,30 +1422,39 @@ def api_mayer():
             dc = rc.json()
             if dc.get("Response") == "Error":
                 raise ValueError(dc.get("Message", "CryptoCompare erro"))
-            candles = [c for c in dc["Data"]["Data"] if c.get("close", 0) > 0]
-            if len(candles) < 201:
-                raise ValueError("CryptoCompare dados insuficientes")
-            closes = [float(c["close"]) for c in candles]
-            logger.info("Mayer: dados via CryptoCompare (fallback)")
+            all_c = [c for c in dc["Data"]["Data"] if c.get("high", 0) > 0]
+            halving_s = HALVING_4_MS // 1000
+            candles = [
+                (int(c["time"]), float(c["high"]), float(c["low"]))
+                for c in all_c if int(c["time"]) >= halving_s
+            ]
+            logger.info(f"CycleStats: {len(candles)} dias via CryptoCompare")
         except Exception as e2:
-            logger.error(f"Mayer CryptoCompare falhou: {e2}")
+            logger.error(f"CycleStats CryptoCompare: {e2}")
             return jsonify({"error": str(e2)}), 502
 
-    current = closes[-1]
-    sma200 = sum(closes[-200:]) / 200
-    mayer = round(current / sma200, 3)
+    if not candles:
+        return jsonify({"error": "sem dados"}), 502
+
+    high_val = max(c[1] for c in candles)
+    low_val  = min(c[2] for c in candles)
+    high_ts  = next(c[0] for c in candles if c[1] == high_val)
+    low_ts   = next(c[0] for c in candles if c[2] == low_val)
+
+    def fmt_date(ts):
+        return datetime.utcfromtimestamp(ts).strftime("%b '%y")
+
     result = {
-        "mayer": mayer,
-        "current": round(current, 2),
-        "sma200": round(sma200, 2),
-        "signal": "overbought"
-        if mayer > 2.4
-        else "oversold"
-        if mayer < 0.8
-        else "fair",
+        "cycle_high": round(high_val, 0),
+        "cycle_high_date": fmt_date(high_ts),
+        "cycle_low": round(low_val, 0),
+        "cycle_low_date": fmt_date(low_ts),
     }
-    _ohlc_cache["mayer"] = {"data": result, "ts": time.time()}
-    logger.info(f"Mayer Multiple: {mayer:.3f} (sma200=${sma200:,.0f})")
+    _ohlc_cache["cycle_stats"] = {"data": result, "ts": time.time()}
+    logger.info(
+        f"CycleStats: high=${high_val:,.0f} ({fmt_date(high_ts)}), "
+        f"low=${low_val:,.0f} ({fmt_date(low_ts)})"
+    )
     return jsonify(result), 200
 
 
