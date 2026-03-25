@@ -173,45 +173,57 @@ def get_dashboard_data():
 
 
 # ── BITCOIN GLOBAL RANK ───────────────────────────────────────────────────────
-# Compara market cap BTC vs ouro + top empresas (Stooq) para calcular rank global
+# Compara market cap BTC vs ouro + prata + top empresas via Yahoo Finance
+# (Yahoo Finance v8/chart funciona em cloud; Stooq bloqueia IPs Render)
+# (ticker, shares_outstanding_aprox, fx: fator para converter preço→USD)
 _RANK_COMPANIES = [
-    # (stooq_ticker, shares_outstanding_aprox)
-    ("nvda.us",  24_400_000_000),
-    ("aapl.us",  15_200_000_000),
-    ("msft.us",   7_440_000_000),
-    ("googl.us", 12_100_000_000),
-    ("amzn.us",  10_500_000_000),
-    ("meta.us",   2_540_000_000),
-    ("avgo.us",   4_800_000_000),
-    ("tsla.us",   3_210_000_000),
-    ("brk-b.us",  2_160_000_000),
-    ("lly.us",      896_000_000),
-    ("jpm.us",    2_810_000_000),
+    ("NVDA",     24_400_000_000, 1.0),
+    ("AAPL",     15_200_000_000, 1.0),
+    ("MSFT",      7_440_000_000, 1.0),
+    ("GOOGL",    12_100_000_000, 1.0),
+    ("AMZN",     10_500_000_000, 1.0),
+    ("META",      2_540_000_000, 1.0),
+    ("AVGO",      4_770_000_000, 1.0),
+    ("TSM",       5_181_000_000, 1.0),   # ADR (1 ADR = 5 ações TSMC)
+    ("TSLA",      3_210_000_000, 1.0),
+    ("BRK-B",     2_160_000_000, 1.0),
+    ("LLY",         896_000_000, 1.0),
+    ("JPM",       2_810_000_000, 1.0),
+    ("WMT",       8_060_000_000, 1.0),
+    ("V",         2_060_000_000, 1.0),
+    ("XOM",       3_970_000_000, 1.0),
+    ("2222.SR", 237_500_000_000, 1/3.75),  # Saudi Aramco: preço em SAR → USD
 ]
 
 
-def _stooq_mc(ticker, shares):
+def _yahoo_mc(ticker, shares, fx):
+    """Busca preço via Yahoo Finance v8 e calcula market cap em USD."""
     try:
         r = requests.get(
-            f"https://stooq.com/q/l/?s={ticker}&f=c&h&e=csv",
-            headers={"User-Agent": "Mozilla/5.0"}, timeout=6,
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1d",
+            headers={"User-Agent": "Mozilla/5.0"}, timeout=8,
         )
         r.raise_for_status()
-        price = float(r.text.strip().split("\n")[-1].strip().split(",")[-1])
-        return price * shares if price > 0 else 0
+        closes = r.json()["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+        closes = [c for c in closes if c is not None]
+        if closes and closes[-1] > 0:
+            return closes[-1] * fx * shares
     except Exception:
-        return 0
+        pass
+    return 0
 
 
-def fetch_btc_rank(btc_usd, gold_usd=None):
-    """Devolve a posição global do BTC por market cap (ouro + top empresas)."""
+def fetch_btc_rank(btc_usd, gold_usd=None, silver_usd=None):
+    """Devolve a posição global do BTC por market cap."""
     btc_mc = btc_usd * 19_850_000
     market_caps = [btc_mc]
     if gold_usd:
-        market_caps.append(gold_usd * 6_915_000_000)  # ~6.9B troy oz acima do solo
+        market_caps.append(gold_usd * 6_915_000_000)   # ~6.9B troy oz acima do solo
+    if silver_usd:
+        market_caps.append(silver_usd * 55_900_000_000)  # ~55.9B troy oz acima do solo
 
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        futures = {ex.submit(_stooq_mc, t, s): (t, s) for t, s in _RANK_COMPANIES}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futures = [ex.submit(_yahoo_mc, t, s, fx) for t, s, fx in _RANK_COMPANIES]
         for f in as_completed(futures):
             mc = f.result()
             if mc > 0:
@@ -519,7 +531,7 @@ def fetch_prices():
         result["btc_rank"] = cached_rank
     elif result["btc_usd"]:
         try:
-            rank = fetch_btc_rank(result["btc_usd"], result.get("gold_usd"))
+            rank = fetch_btc_rank(result["btc_usd"], result.get("gold_usd"), result.get("silver_usd"))
             if rank:
                 result["btc_rank"] = rank
                 cache_set("btc_rank", rank)
