@@ -206,6 +206,7 @@ def fetch_prices():
         "silver_btc": None,
         "nasdaq_usd": None,
         "nasdaq_btc": None,
+        "btc_rank": None,
         "source": [],
     }
     H = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
@@ -457,6 +458,34 @@ def fetch_prices():
             logger.info(f"NASDAQ (Yahoo ^IXIC): ${nasdaq_usd:,.0f}")
     except Exception as e:
         logger.warning(f"Yahoo NASDAQ: {e}")
+
+    # ── Bitcoin Rank: companiesmarketcap.com ─────────────────────────────────
+    try:
+        r = requests.get(
+            "https://companiesmarketcap.com/assets-by-market-cap/",
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        html = r.text
+        # Strategy 1: find href to /bitcoin/ page and look backwards for rank
+        idx = html.lower().find('href="/bitcoin/')
+        if idx < 0:
+            idx = html.lower().find('href="/assets/bitcoin/')
+        if idx > 0:
+            snippet = html[max(0, idx - 400):idx]
+            m = re.search(r'>(\d+)<', snippet)
+            if m:
+                result["btc_rank"] = int(m.group(1))
+                logger.info(f"BTC rank (companiesmarketcap): #{result['btc_rank']}")
+        # Strategy 2: look for rank number adjacent to "Bitcoin" text
+        if not result["btc_rank"]:
+            m = re.search(r'>(\d+)<[^>]{0,60}>Bitcoin<', html)
+            if m:
+                result["btc_rank"] = int(m.group(1))
+                logger.info(f"BTC rank alt (companiesmarketcap): #{result['btc_rank']}")
+    except Exception as e:
+        logger.warning(f"CompaniesMarketCap rank: {e}")
 
     result["updated"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     return result
