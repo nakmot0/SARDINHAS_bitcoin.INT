@@ -189,6 +189,8 @@
       flex-direction: column;
       gap: 12px;
       text-align: right;
+      justify-content: center;
+      align-self: center;
     }
 
     .stat-item .stat-val {
@@ -908,15 +910,19 @@
     </div>
     <div class="hero-stats">
       <div class="stat-item">
+        <div class="stat-val" id="btc-rank">#--</div>
+        <div class="stat-lbl" data-i18n="rank-label">Market Cap Rank</div>
+      </div>
+      <div class="stat-item">
         <div class="stat-val" id="btc-dominance">--%</div>
         <div class="stat-lbl" data-i18n="dominance-label">BTC Dominance</div>
       </div>
-      <div class="stat-item" style="margin-top:14px">
+      <div class="stat-item">
         <div style="font-family:'Roboto Condensed',sans-serif;font-weight:300;font-size:13px;color:var(--btc);line-height:1.4" id="h24-high">▲ --</div>
         <div style="font-family:'Roboto Condensed',sans-serif;font-weight:300;font-size:13px;color:var(--muted);line-height:1.4" id="h24-low">▼ --</div>
         <div class="stat-lbl" style="margin-top:4px">High / Low 24h</div>
       </div>
-      <div class="stat-item" style="margin-top:14px">
+      <div class="stat-item">
         <div style="font-family:'Roboto Condensed',sans-serif;font-weight:300;font-size:12px;color:var(--btc);line-height:1.6" id="cycle-high-val">▲ --</div>
         <div style="font-family:'Roboto Condensed',sans-serif;font-weight:300;font-size:12px;color:#f87171;line-height:1.6" id="cycle-low-val">▼ --</div>
         <div class="stat-lbl" style="margin-top:4px" data-i18n="cycle-range-label">Cycle High / Low</div>
@@ -2044,6 +2050,9 @@
       if (d.btc_change_24h !== null && d.btc_change_24h !== undefined)
         setBadge(document.getElementById('btc-badge'), d.btc_change_24h);
 
+      if (d.btc_rank)
+        document.getElementById('btc-rank').textContent = '#' + d.btc_rank;
+
       if (d.dominance)
         document.getElementById('btc-dominance').textContent = d.dominance.toFixed(1) + '%';
 
@@ -2418,6 +2427,7 @@
       'live': 'Live',
       'updated': 'Last update',
       'hero-label': 'Bitcoin · USD',
+      'rank-label': 'Market Cap Rank',
       'dominance-label': 'BTC Dominance',
       'high-low-label': 'High / Low 24h',
       'gold-title': 'Gold in BTC',
@@ -2468,6 +2478,7 @@
       'live': 'Em tempo real',
       'updated': 'Última atualização',
       'hero-label': 'Bitcoin · USD',
+      'rank-label': 'Rank por Market Cap',
       'dominance-label': 'Dominância BTC',
       'high-low-label': 'High / Low 24h',
       'gold-title': 'Ouro em BTC',
