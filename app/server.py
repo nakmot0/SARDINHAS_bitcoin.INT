@@ -202,6 +202,10 @@ def fetch_prices():
         "dominance": None,
         "crude_usd": None,
         "crude_btc": None,
+        "silver_usd": None,
+        "silver_btc": None,
+        "nasdaq_usd": None,
+        "nasdaq_btc": None,
         "source": [],
     }
     H = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
@@ -413,6 +417,46 @@ def fetch_prices():
             logger.info(f"SP500 (Yahoo): ${sp500_usd:,.0f}")
     except Exception as e:
         logger.warning(f"Yahoo SP500: {e}")
+
+    # ── Prata: Yahoo Finance SI=F ─────────────────────────────────────────────
+    try:
+        ry = requests.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/SI=F"
+            "?interval=1d&range=5d",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        )
+        ry.raise_for_status()
+        dy = ry.json()
+        ag_closes = dy["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+        ag_closes = [c for c in ag_closes if c is not None]
+        if ag_closes and result["btc_usd"]:
+            silver_usd = round(ag_closes[-1], 4)
+            result["silver_usd"] = silver_usd
+            result["silver_btc"] = round(silver_usd / result["btc_usd"], 8)
+            logger.info(f"Prata (Yahoo SI=F): ${silver_usd:.2f}")
+    except Exception as e:
+        logger.warning(f"Yahoo Silver: {e}")
+
+    # ── NASDAQ: Yahoo Finance ^IXIC ───────────────────────────────────────────
+    try:
+        ry = requests.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC"
+            "?interval=1d&range=5d",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        )
+        ry.raise_for_status()
+        dy = ry.json()
+        nq_closes = dy["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+        nq_closes = [c for c in nq_closes if c is not None]
+        if nq_closes and result["btc_usd"]:
+            nasdaq_usd = round(nq_closes[-1], 2)
+            result["nasdaq_usd"] = nasdaq_usd
+            result["nasdaq_btc"] = round(nasdaq_usd / result["btc_usd"], 6)
+            logger.info(f"NASDAQ (Yahoo ^IXIC): ${nasdaq_usd:,.0f}")
+    except Exception as e:
+        logger.warning(f"Yahoo NASDAQ: {e}")
 
     result["updated"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     return result
@@ -1504,7 +1548,7 @@ def api_assets24h():
         return jsonify(cached["data"]), 200
 
     H = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
-    result = {"eth": [], "gold": [], "sp500": [], "oil": [], "updated": datetime.now().strftime("%H:%M")}
+    result = {"eth": [], "gold": [], "sp500": [], "oil": [], "silver": [], "nasdaq": [], "updated": datetime.now().strftime("%H:%M")}
 
     # ── Mapa BTC/USD 1h (partilhado por Gold e Oil) ───────────────────────────
     # Reutiliza cache h24 se disponível para evitar chamada dupla ao Kraken
@@ -1556,39 +1600,32 @@ def api_assets24h():
     except Exception as e:
         logger.warning(f"Assets24h ETH/BTC: {e}")
 
-    # ── Gold/BTC: CoinGecko XAUT/USD → dividir por BTC/USD ───────────────────
-    # Mesma fonte que fetch_prices(): tether-gold vs USD (mais fiável que vs BTC)
-    # Fallback: pax-gold vs USD (PAX Gold, também 1 oz troy)
-    gold_prices_usd = []
-    for coin_id in ("tether-gold", "pax-gold"):
-        if gold_prices_usd:
-            break
-        try:
-            r = requests.get(
-                f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
-                "?vs_currency=usd&days=1",
-                headers=H, timeout=12,
-            )
-            r.raise_for_status()
-            pts = r.json().get("prices", [])
-            if pts:
-                gold_prices_usd = pts
-                logger.info(f"Assets24h Gold USD ({coin_id}): {len(pts)} pontos")
-        except Exception as e:
-            logger.warning(f"Assets24h Gold ({coin_id}): {e}")
+    # ── Gold/BTC: Yahoo Finance GC=F 1h → dividir por BTC/USD ───────────────
+    try:
+        ry = requests.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1h&range=2d",
+            headers={"User-Agent": "Mozilla/5.0"}, timeout=10,
+        )
+        ry.raise_for_status()
+        dy = ry.json()
+        chart_res = (dy.get("chart") or {}).get("result") or []
+        if not chart_res:
+            raise ValueError("Yahoo Finance: sem dados GC=F")
+        timestamps_g = chart_res[0]["timestamp"]
+        closes_gold  = chart_res[0]["indicators"]["quote"][0]["close"]
 
-    if gold_prices_usd and btc_map:
-        step = max(1, len(gold_prices_usd) // 25)
-        sampled = gold_prices_usd[::step][-25:]
-        bars = []
-        for p in sampled:
-            ts = int(p[0] / 1000)
-            gold_usd_val = float(p[1])
-            btc_usd_val = _nearest_btc(ts)
-            if btc_usd_val and gold_usd_val > 0:
-                bars.append({"t": ts, "v": round(gold_usd_val / btc_usd_val, 6)})
-        result["gold"] = bars
-        logger.info(f"Assets24h Gold/BTC: {len(bars)} pontos calculados")
+        if btc_map:
+            gold_bars = []
+            for ts, close in zip(timestamps_g, closes_gold):
+                if close is None or close <= 0:
+                    continue
+                btc_usd_val = _nearest_btc(ts)
+                if btc_usd_val:
+                    gold_bars.append({"t": ts, "v": round(close / btc_usd_val, 6)})
+            result["gold"] = gold_bars[-25:]
+            logger.info(f"Assets24h Gold/BTC: {len(result['gold'])} pontos")
+    except Exception as e:
+        logger.warning(f"Assets24h Gold/BTC: {e}")
 
     # ── Oil/BTC: Yahoo Finance CL=F 1h → dividir por BTC/USD ─────────────────
     try:
@@ -1643,6 +1680,60 @@ def api_assets24h():
             logger.info(f"Assets24h SP500/BTC: {len(result['sp500'])} pontos")
     except Exception as e:
         logger.warning(f"Assets24h SP500/BTC: {e}")
+
+    # ── Silver/BTC: Yahoo Finance SI=F 1h → dividir por BTC/USD ─────────────
+    try:
+        ry = requests.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/SI=F?interval=1h&range=2d",
+            headers={"User-Agent": "Mozilla/5.0"}, timeout=10,
+        )
+        ry.raise_for_status()
+        dy = ry.json()
+        chart_res = (dy.get("chart") or {}).get("result") or []
+        if not chart_res:
+            raise ValueError("Yahoo Finance: sem dados SI=F")
+        timestamps_ag = chart_res[0]["timestamp"]
+        closes_ag     = chart_res[0]["indicators"]["quote"][0]["close"]
+
+        if btc_map:
+            ag_bars = []
+            for ts, close in zip(timestamps_ag, closes_ag):
+                if close is None or close <= 0:
+                    continue
+                btc_usd_val = _nearest_btc(ts)
+                if btc_usd_val:
+                    ag_bars.append({"t": ts, "v": round(close / btc_usd_val, 8)})
+            result["silver"] = ag_bars[-25:]
+            logger.info(f"Assets24h Silver/BTC: {len(result['silver'])} pontos")
+    except Exception as e:
+        logger.warning(f"Assets24h Silver/BTC: {e}")
+
+    # ── NASDAQ/BTC: Yahoo Finance ^IXIC 1h → dividir por BTC/USD ─────────────
+    try:
+        ry = requests.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC?interval=1h&range=2d",
+            headers={"User-Agent": "Mozilla/5.0"}, timeout=10,
+        )
+        ry.raise_for_status()
+        dy = ry.json()
+        chart_res = (dy.get("chart") or {}).get("result") or []
+        if not chart_res:
+            raise ValueError("Yahoo Finance: sem dados ^IXIC")
+        timestamps_nq = chart_res[0]["timestamp"]
+        closes_nq     = chart_res[0]["indicators"]["quote"][0]["close"]
+
+        if btc_map:
+            nq_bars = []
+            for ts, close in zip(timestamps_nq, closes_nq):
+                if close is None or close <= 0:
+                    continue
+                btc_usd_val = _nearest_btc(ts)
+                if btc_usd_val:
+                    nq_bars.append({"t": ts, "v": round(close / btc_usd_val, 6)})
+            result["nasdaq"] = nq_bars[-25:]
+            logger.info(f"Assets24h NASDAQ/BTC: {len(result['nasdaq'])} pontos")
+    except Exception as e:
+        logger.warning(f"Assets24h NASDAQ/BTC: {e}")
 
     _ohlc_cache["assets24h"] = {"data": result, "ts": time.time()}
     return jsonify(result), 200
