@@ -911,7 +911,7 @@
     <div class="hero-stats">
       <div class="stat-item">
         <div class="stat-val" id="btc-rank">#--</div>
-        <div class="stat-lbl" data-i18n="rank-label">Market Cap Rank</div>
+        <div class="stat-lbl" data-i18n="rank-label">Global Marketcap Rank</div>
       </div>
       <div class="stat-item">
         <div class="stat-val" id="btc-dominance">--%</div>
@@ -2057,33 +2057,33 @@
         document.getElementById('btc-dominance').textContent = d.dominance.toFixed(1) + '%';
 
       if (d.eth_btc)
-        document.getElementById('eth-btc').textContent = d.eth_btc.toFixed(5) + ' BTC';
+        document.getElementById('eth-btc').textContent = d.eth_btc.toFixed(4) + ' BTC';
       if (d.eth_usd)
         document.getElementById('eth-usd').textContent = '$' + d.eth_usd.toLocaleString(locale, {maximumFractionDigits: 2});
 
       if (d.gold_btc)
-        document.getElementById('gold-btc').textContent = d.gold_btc.toFixed(5) + ' BTC';
+        document.getElementById('gold-btc').textContent = d.gold_btc.toFixed(4) + ' BTC';
       if (d.gold_usd)
         document.getElementById('gold-usd').textContent = '$' + d.gold_usd.toLocaleString(locale, {maximumFractionDigits: 2}) + ' /oz';
 
       if (d.crude_btc) {
-        document.getElementById('crude-btc').textContent = d.crude_btc.toFixed(5) + ' BTC';
+        document.getElementById('crude-btc').textContent = d.crude_btc.toFixed(4) + ' BTC';
         document.getElementById('crude-desc').textContent =
           d.crude_usd ? '$' + d.crude_usd.toFixed(1) + ' / barrel' : 'WTI Crude';
       }
 
       if (d.sp500_btc)
-        document.getElementById('sp500-btc').textContent = d.sp500_btc.toFixed(5) + ' BTC';
+        document.getElementById('sp500-btc').textContent = d.sp500_btc.toFixed(4) + ' BTC';
       if (d.sp500_usd)
         document.getElementById('sp500-usd').textContent = '$' + d.sp500_usd.toLocaleString(locale, {maximumFractionDigits: 0});
 
       if (d.silver_btc)
-        document.getElementById('silver-btc').textContent = d.silver_btc.toFixed(8) + ' BTC';
+        document.getElementById('silver-btc').textContent = d.silver_btc.toFixed(4) + ' BTC';
       if (d.silver_usd)
         document.getElementById('silver-usd').textContent = '$' + d.silver_usd.toLocaleString(locale, {maximumFractionDigits: 2}) + ' /oz';
 
       if (d.nasdaq_btc)
-        document.getElementById('nasdaq-btc').textContent = d.nasdaq_btc.toFixed(5) + ' BTC';
+        document.getElementById('nasdaq-btc').textContent = d.nasdaq_btc.toFixed(4) + ' BTC';
       if (d.nasdaq_usd)
         document.getElementById('nasdaq-usd').textContent = '$' + d.nasdaq_usd.toLocaleString(locale, {maximumFractionDigits: 0});
 
@@ -2427,7 +2427,7 @@
       'live': 'Live',
       'updated': 'Last update',
       'hero-label': 'Bitcoin · USD',
-      'rank-label': 'Market Cap Rank',
+      'rank-label': 'Global Marketcap Rank',
       'dominance-label': 'BTC Dominance',
       'high-low-label': 'High / Low 24h',
       'gold-title': 'Gold in BTC',
@@ -2478,7 +2478,7 @@
       'live': 'Em tempo real',
       'updated': 'Última atualização',
       'hero-label': 'Bitcoin · USD',
-      'rank-label': 'Rank por Market Cap',
+      'rank-label': 'Global Marketcap Rank',
       'dominance-label': 'Dominância BTC',
       'high-low-label': 'High / Low 24h',
       'gold-title': 'Ouro em BTC',
