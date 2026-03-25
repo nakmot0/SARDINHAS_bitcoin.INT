@@ -394,6 +394,26 @@ def fetch_prices():
         result["crude_usd"] = crude_usd
         result["crude_btc"] = round(crude_usd / result["btc_usd"], 6)
 
+    # ── S&P 500: Yahoo Finance ^GSPC ─────────────────────────────────────────
+    try:
+        ry = requests.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC"
+            "?interval=1d&range=5d",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        )
+        ry.raise_for_status()
+        dy = ry.json()
+        sp_closes = dy["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+        sp_closes = [c for c in sp_closes if c is not None]
+        if sp_closes and result["btc_usd"]:
+            sp500_usd = round(sp_closes[-1], 2)
+            result["sp500_usd"] = sp500_usd
+            result["sp500_btc"] = round(sp500_usd / result["btc_usd"], 6)
+            logger.info(f"SP500 (Yahoo): ${sp500_usd:,.0f}")
+    except Exception as e:
+        logger.warning(f"Yahoo SP500: {e}")
+
     result["updated"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     return result
 
@@ -1484,9 +1504,43 @@ def api_assets24h():
         return jsonify(cached["data"]), 200
 
     H = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
-    result = {"eth": [], "gold": [], "oil": [], "updated": datetime.now().strftime("%H:%M")}
+    result = {"eth": [], "gold": [], "sp500": [], "oil": [], "updated": datetime.now().strftime("%H:%M")}
 
-    # ── ETH/BTC: Kraken ETHXBT 1h OHLC ──────────────────────────────────────
+    # ── Mapa BTC/USD 1h (partilhado por Gold e Oil) ───────────────────────────
+    # Reutiliza cache h24 se disponível para evitar chamada dupla ao Kraken
+    btc_map = {}
+    h24_c = _ohlc_cache.get("h24")
+    if h24_c and h24_c.get("data", {}).get("bars"):
+        for b in h24_c["data"]["bars"]:
+            btc_map[b["t"]] = b["c"]
+    if not btc_map:
+        try:
+            rb = requests.get(
+                "https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=60",
+                headers=H, timeout=10,
+            )
+            rb.raise_for_status()
+            db_k = rb.json().get("result", {})
+            btc_key = next((k for k in db_k if k != "last"), None)
+            if btc_key:
+                for c in db_k[btc_key][-25:]:
+                    btc_map[int(c[0])] = float(c[4])
+        except Exception as e:
+            logger.warning(f"Assets24h BTC map: {e}")
+    btc_ts_sorted = sorted(btc_map.keys())
+
+    def _nearest_btc(ts):
+        """Devolve o preço BTC mais próximo do timestamp dado (tolerância 2h)."""
+        if not btc_ts_sorted:
+            return None
+        idx = bisect.bisect_left(btc_ts_sorted, ts)
+        candidates = btc_ts_sorted[max(0, idx - 1): idx + 2]
+        nearest = min(candidates, key=lambda x: abs(x - ts))
+        if abs(nearest - ts) < 7200 and btc_map[nearest] > 0:
+            return btc_map[nearest]
+        return None
+
+    # ── ETH/BTC: Kraken ETHXBT 1h OHLC (par directo, sem conversão) ──────────
     try:
         r = requests.get(
             "https://api.kraken.com/0/public/OHLC?pair=ETHXBT&interval=60",
@@ -1502,27 +1556,41 @@ def api_assets24h():
     except Exception as e:
         logger.warning(f"Assets24h ETH/BTC: {e}")
 
-    # ── Gold/BTC: CoinGecko XAUT vs BTC ──────────────────────────────────────
-    # days=1 → ~288 pontos (5-min); reduzimos para ~25 por amostragem uniforme
-    try:
-        r = requests.get(
-            "https://api.coingecko.com/api/v3/coins/tether-gold/market_chart"
-            "?vs_currency=btc&days=1",
-            headers=H, timeout=12,
-        )
-        r.raise_for_status()
-        prices = r.json().get("prices", [])
-        if prices:
-            # Amostrar ~25 pontos uniformemente
-            step = max(1, len(prices) // 25)
-            sampled = prices[::step][-25:]
-            result["gold"] = [{"t": int(p[0] / 1000), "v": float(p[1])} for p in sampled]
-            logger.info(f"Assets24h Gold/BTC: {len(result['gold'])} pontos (de {len(prices)})")
-    except Exception as e:
-        logger.warning(f"Assets24h Gold/BTC: {e}")
+    # ── Gold/BTC: CoinGecko XAUT/USD → dividir por BTC/USD ───────────────────
+    # Mesma fonte que fetch_prices(): tether-gold vs USD (mais fiável que vs BTC)
+    # Fallback: pax-gold vs USD (PAX Gold, também 1 oz troy)
+    gold_prices_usd = []
+    for coin_id in ("tether-gold", "pax-gold"):
+        if gold_prices_usd:
+            break
+        try:
+            r = requests.get(
+                f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+                "?vs_currency=usd&days=1",
+                headers=H, timeout=12,
+            )
+            r.raise_for_status()
+            pts = r.json().get("prices", [])
+            if pts:
+                gold_prices_usd = pts
+                logger.info(f"Assets24h Gold USD ({coin_id}): {len(pts)} pontos")
+        except Exception as e:
+            logger.warning(f"Assets24h Gold ({coin_id}): {e}")
 
-    # ── Oil/BTC: Yahoo Finance CL=F 1h + Kraken BTC 1h ───────────────────────
-    # Reutiliza sempre o cache de h24 se disponível para evitar chamada dupla ao Kraken
+    if gold_prices_usd and btc_map:
+        step = max(1, len(gold_prices_usd) // 25)
+        sampled = gold_prices_usd[::step][-25:]
+        bars = []
+        for p in sampled:
+            ts = int(p[0] / 1000)
+            gold_usd_val = float(p[1])
+            btc_usd_val = _nearest_btc(ts)
+            if btc_usd_val and gold_usd_val > 0:
+                bars.append({"t": ts, "v": round(gold_usd_val / btc_usd_val, 6)})
+        result["gold"] = bars
+        logger.info(f"Assets24h Gold/BTC: {len(bars)} pontos calculados")
+
+    # ── Oil/BTC: Yahoo Finance CL=F 1h → dividir por BTC/USD ─────────────────
     try:
         ry = requests.get(
             "https://query1.finance.yahoo.com/v8/finance/chart/CL=F?interval=1h&range=2d",
@@ -1536,42 +1604,45 @@ def api_assets24h():
         timestamps_y = chart_res[0]["timestamp"]
         closes_oil   = chart_res[0]["indicators"]["quote"][0]["close"]
 
-        # Construir mapa BTC timestamp→close (preferir cache h24)
-        btc_map = {}
-        h24_c = _ohlc_cache.get("h24")
-        if h24_c and h24_c.get("data", {}).get("bars"):
-            for b in h24_c["data"]["bars"]:
-                btc_map[b["t"]] = b["c"]
-        if not btc_map:
-            rb = requests.get(
-                "https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=60",
-                headers=H, timeout=10,
-            )
-            rb.raise_for_status()
-            db_k = rb.json().get("result", {})
-            btc_key = next((k for k in db_k if k != "last"), None)
-            if btc_key:
-                for c in db_k[btc_key][-25:]:
-                    btc_map[int(c[0])] = float(c[4])
-
         if btc_map:
-            btc_ts_sorted = sorted(btc_map.keys())
             oil_bars = []
             for ts, close in zip(timestamps_y, closes_oil):
                 if close is None or close <= 0:
                     continue
-                # Bisect: O(log n) para encontrar timestamp BTC mais próximo
-                idx = bisect.bisect_left(btc_ts_sorted, ts)
-                candidates = btc_ts_sorted[max(0, idx - 1): idx + 2]
-                if not candidates:
-                    continue
-                nearest = min(candidates, key=lambda x: abs(x - ts))
-                if abs(nearest - ts) < 7200 and btc_map[nearest] > 0:
-                    oil_bars.append({"t": ts, "v": round(close / btc_map[nearest], 8)})
+                btc_usd_val = _nearest_btc(ts)
+                if btc_usd_val:
+                    oil_bars.append({"t": ts, "v": round(close / btc_usd_val, 8)})
             result["oil"] = oil_bars[-25:]
             logger.info(f"Assets24h Oil/BTC: {len(result['oil'])} pontos")
     except Exception as e:
         logger.warning(f"Assets24h Oil/BTC: {e}")
+
+    # ── SP500/BTC: Yahoo Finance ^GSPC 1h → dividir por BTC/USD ─────────────
+    try:
+        ry = requests.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1h&range=2d",
+            headers={"User-Agent": "Mozilla/5.0"}, timeout=10,
+        )
+        ry.raise_for_status()
+        dy = ry.json()
+        chart_res = (dy.get("chart") or {}).get("result") or []
+        if not chart_res:
+            raise ValueError("Yahoo Finance: sem dados ^GSPC")
+        timestamps_sp = chart_res[0]["timestamp"]
+        closes_sp     = chart_res[0]["indicators"]["quote"][0]["close"]
+
+        if btc_map:
+            sp_bars = []
+            for ts, close in zip(timestamps_sp, closes_sp):
+                if close is None or close <= 0:
+                    continue
+                btc_usd_val = _nearest_btc(ts)
+                if btc_usd_val:
+                    sp_bars.append({"t": ts, "v": round(close / btc_usd_val, 6)})
+            result["sp500"] = sp_bars[-25:]
+            logger.info(f"Assets24h SP500/BTC: {len(result['sp500'])} pontos")
+    except Exception as e:
+        logger.warning(f"Assets24h SP500/BTC: {e}")
 
     _ohlc_cache["assets24h"] = {"data": result, "ts": time.time()}
     return jsonify(result), 200
