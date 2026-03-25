@@ -924,24 +924,42 @@
     </div>
   </section>
 
-  <!-- OURO / ETH / PETRÓLEO -->
+  <!-- OURO / SP500 / ETH / PETRÓLEO -->
   <div class="grid-3">
     <div class="card">
       <canvas id="gold-sparkline" class="card-sparkline"></canvas>
       <div class="card-title" data-i18n="gold-title">Ouro em BTC</div>
-      <div class="card-val" id="gold-btc">-- BTC</div>
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+        <div class="card-val" id="gold-btc">-- BTC</div>
+        <span class="badge neu" id="gold-badge">--</span>
+      </div>
       <div class="card-desc" id="gold-usd">-- USD/oz</div>
+    </div>
+    <div class="card">
+      <canvas id="sp500-sparkline" class="card-sparkline"></canvas>
+      <div class="card-title" data-i18n="sp500-title">S&amp;P 500 em BTC</div>
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+        <div class="card-val" id="sp500-btc">-- BTC</div>
+        <span class="badge neu" id="sp500-badge">--</span>
+      </div>
+      <div class="card-desc" id="sp500-usd">-- USD</div>
     </div>
     <div class="card">
       <canvas id="eth-sparkline" class="card-sparkline"></canvas>
       <div class="card-title" data-i18n="eth-title">Ethereum em BTC</div>
-      <div class="card-val" id="eth-btc">-- BTC</div>
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+        <div class="card-val" id="eth-btc">-- BTC</div>
+        <span class="badge neu" id="eth-badge">--</span>
+      </div>
       <div class="card-desc" id="eth-usd">-- USD</div>
     </div>
     <div class="card">
       <canvas id="oil-sparkline" class="card-sparkline"></canvas>
       <div class="card-title" data-i18n="oil-title">Petróleo WTI em BTC</div>
-      <div class="card-val" id="crude-btc">-- BTC</div>
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+        <div class="card-val" id="crude-btc">-- BTC</div>
+        <span class="badge neu" id="crude-badge">--</span>
+      </div>
       <div class="card-desc" id="crude-desc">-- USD/barril</div>
     </div>
   </div>
@@ -1926,9 +1944,10 @@
       const d = await r.json();
 
       const defs = [
-        { key: 'gold', id: 'gold-sparkline',  color: [255, 215,   0] },
-        { key: 'eth',  id: 'eth-sparkline',   color: [ 98, 126, 234] },
-        { key: 'oil',  id: 'oil-sparkline',   color: [180, 180, 180] },
+        { key: 'gold',  id: 'gold-sparkline',  badgeId: 'gold-badge',  color: [255, 215,   0] },
+        { key: 'sp500', id: 'sp500-sparkline', badgeId: 'sp500-badge', color: [220,  50,  50] },
+        { key: 'eth',   id: 'eth-sparkline',   badgeId: 'eth-badge',   color: [ 98, 126, 234] },
+        { key: 'oil',   id: 'oil-sparkline',   badgeId: 'crude-badge', color: [180, 180, 180] },
       ];
 
       for (const def of defs) {
@@ -1940,6 +1959,10 @@
         const last  = vals[vals.length - 1];
         const isUp  = last >= first;
         const [rr, gg, bb] = def.color;
+
+        // Badge variação 24h vs BTC
+        const badgeEl = document.getElementById(def.badgeId);
+        if (badgeEl) setBadge(badgeEl, (last - first) / first * 100);
 
         const canvas = document.getElementById(def.id);
         if (!canvas) continue;
@@ -2019,6 +2042,11 @@
         document.getElementById('crude-desc').textContent =
           d.crude_usd ? '$' + d.crude_usd.toFixed(1) + ' / barrel' : 'WTI Crude';
       }
+
+      if (d.sp500_btc)
+        document.getElementById('sp500-btc').textContent = d.sp500_btc.toFixed(5) + ' BTC';
+      if (d.sp500_usd)
+        document.getElementById('sp500-usd').textContent = '$' + d.sp500_usd.toLocaleString(locale, {maximumFractionDigits: 0});
 
       const loc = _lang === 'pt' ? 'pt-PT' : 'en-GB';
       document.getElementById('updated').textContent = d.updated ||
@@ -2347,6 +2375,7 @@
       'dominance-label': 'BTC Dominance',
       'high-low-label': 'High / Low 24h',
       'gold-title': 'Gold in BTC',
+      'sp500-title': 'S&P 500 in BTC',
       'eth-title': 'Ethereum in BTC',
       'oil-title': 'WTI Crude in BTC',
       'fg-title': 'Fear & Greed Index',
@@ -2394,6 +2423,7 @@
       'dominance-label': 'Dominância BTC',
       'high-low-label': 'High / Low 24h',
       'gold-title': 'Ouro em BTC',
+      'sp500-title': 'S&P 500 em BTC',
       'eth-title': 'Ethereum em BTC',
       'oil-title': 'Petróleo WTI em BTC',
       'fg-title': 'Fear & Greed Index',
