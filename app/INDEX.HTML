@@ -909,6 +909,25 @@
     </div>
   </section>
 
+  <!-- OURO / ETH / PETRÓLEO -->
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-title" data-i18n="gold-title">Ouro em BTC</div>
+      <div class="card-val" id="gold-btc">-- BTC</div>
+      <div class="card-desc" id="gold-usd">-- USD/oz</div>
+    </div>
+    <div class="card">
+      <div class="card-title" data-i18n="eth-title">Ethereum em BTC</div>
+      <div class="card-val" id="eth-btc">-- BTC</div>
+      <div class="card-desc" id="eth-usd">-- USD</div>
+    </div>
+    <div class="card">
+      <div class="card-title" data-i18n="oil-title">Petróleo WTI em BTC</div>
+      <div class="card-val" id="crude-btc">-- BTC</div>
+      <div class="card-desc" id="crude-desc">-- USD/barril</div>
+    </div>
+  </div>
+
   <!-- FEAR & GREED INDEX -->
   <div class="fg-wrap">
     <div class="card-title" data-i18n="fg-title" style="margin-bottom:12px;">Fear &amp; Greed Index</div>
@@ -1019,25 +1038,6 @@
       </div>
 
     </div>
-
-  <!-- CARDS -->
-  <div class="grid-3">
-    <div class="card">
-      <div class="card-title" data-i18n="gold-title">Ouro em BTC</div>
-      <div class="card-val" id="gold-btc">-- BTC</div>
-      <div class="card-desc" id="gold-usd">-- USD/oz</div>
-    </div>
-    <div class="card">
-      <div class="card-title" data-i18n="eth-title">Ethereum em BTC</div>
-      <div class="card-val" id="eth-btc">-- BTC</div>
-      <div class="card-desc" id="eth-usd">-- USD</div>
-    </div>
-    <div class="card">
-      <div class="card-title" data-i18n="oil-title">Petróleo WTI em BTC</div>
-      <div class="card-val" id="crude-btc">-- BTC</div>
-      <div class="card-desc" id="crude-desc">-- USD/barril</div>
-    </div>
-  </div>
 
   <!-- PAINEL AEROPORTO -->
   <div class="flipboard">
@@ -1245,8 +1245,8 @@
         grid:    'rgba(0,0,0,0.06)',
         tick:    '#999',
         tooltip: { bg:'#fff', border:'rgba(0,0,0,0.1)', title:'#999', body:'#111' },
-        ema1:    '#b5620a',   // laranja escuro — EMA rápida
-        ema2:    '#aaa',      // cinzento — EMA lenta
+        ema1:    '#f97316',   // laranja — EMA rápida
+        ema2:    '#3b82f6',  // azul — EMA lenta
         bullBar: 'rgba(22,163,74,0.45)',
         bearBar: 'rgba(220,38,38,0.45)',
       };
@@ -1256,7 +1256,7 @@
       tick:    '#777',
       tooltip: { bg:'#111', border:'rgba(255,255,255,0.12)', title:'#888', body:'#f0f0f0' },
       ema1:    '#ff9f1a',
-      ema2:    '#666',
+      ema2:    '#60a5fa',
       bullBar: 'rgba(74,222,128,0.45)',
       bearBar: 'rgba(248,113,113,0.45)',
     };
@@ -1633,9 +1633,9 @@
         datasets: [
           { label:'Volume',  data:volumes, backgroundColor:volColors, borderWidth:0, yAxisID:'y_vol', order:5 },
           { label:'Preço',   data:closes,  backgroundColor:barColors, borderColor:'transparent', borderWidth:0, order:2 },
-          { label:'EMA 20W', data:ema20,   type:'line', borderColor:C.ema1, backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.4, spanGaps:true, order:1 },
-          { label:'EMA 50W', data:ema50,   type:'line', borderColor:C.ema2, backgroundColor:'transparent', borderWidth:2,   pointRadius:0, tension:0.4, spanGaps:true, order:0 },
-          { label:'EMA 200W',data:ema200,  type:'line', borderColor:'rgba(255,255,255,0.2)', backgroundColor:'transparent', borderWidth:1.5, borderDash:[6,4], pointRadius:0, tension:0.4, spanGaps:true, order:-1 },
+          { label:'EMA 20W', data:ema20,   type:'line', borderColor:C.ema1, backgroundColor:'rgba(255,159,26,0.07)', fill:'+1', borderWidth:2.5, pointRadius:0, tension:0.4, spanGaps:true, order:1 },
+          { label:'EMA 50W', data:ema50,   type:'line', borderColor:C.ema2, backgroundColor:'transparent',              borderWidth:2.5, pointRadius:0, tension:0.4, spanGaps:true, order:0 },
+          { label:'EMA 200W',data:ema200,  type:'line', borderColor:'rgba(255,255,255,0.5)', backgroundColor:'transparent', borderWidth:1.5, borderDash:[5,4], pointRadius:0, tension:0.4, spanGaps:true, order:-1 },
           { label:'RSI 14',  data:rsi14,   type:'line', borderColor:'rgba(255,159,26,0.6)', backgroundColor:'transparent', borderWidth:1.2, pointRadius:0, tension:0.4, spanGaps:true, yAxisID:'y2', order:-2 },
           { label:'RSI 70',  data:new Array(labels.length).fill(70), type:'line', borderColor:'rgba(248,113,113,0.2)', backgroundColor:'transparent', borderWidth:1, borderDash:[3,5], pointRadius:0, yAxisID:'y2', order:-3 },
           { label:'RSI 30',  data:new Array(labels.length).fill(30), type:'line', borderColor:'rgba(74,222,128,0.2)', backgroundColor:'transparent', borderWidth:1, borderDash:[3,5], pointRadius:0, yAxisID:'y2', order:-3 },
@@ -1721,8 +1721,8 @@
         datasets: [
           { label:'Volume',  data:volumes, backgroundColor:volColors, borderWidth:0, yAxisID:'y_vol', order:5 },
           { label:'Preço',   data:closes,  backgroundColor:barColors, borderColor:'transparent', borderWidth:0, order:2 },
-          { label:'SMA 10M', data:sma10,   type:'line', borderColor:C.ema1, backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.4, spanGaps:true, order:1 },
-          { label:'SMA 20M', data:sma20,   type:'line', borderColor:C.ema2, backgroundColor:'transparent', borderWidth:2,   pointRadius:0, tension:0.4, spanGaps:true, order:0 },
+          { label:'SMA 10M', data:sma10,   type:'line', borderColor:C.ema1, backgroundColor:'rgba(255,159,26,0.07)', fill:'+1', borderWidth:2.5, pointRadius:0, tension:0.4, spanGaps:true, order:1 },
+          { label:'SMA 20M', data:sma20,   type:'line', borderColor:C.ema2, backgroundColor:'transparent',              borderWidth:2.5, pointRadius:0, tension:0.4, spanGaps:true, order:0 },
           { label:'RSI 14',  data:rsi14,   type:'line', borderColor:'rgba(255,159,26,0.6)', backgroundColor:'transparent', borderWidth:1.2, pointRadius:0, tension:0.4, spanGaps:true, yAxisID:'y2', order:-1 },
           { label:'RSI 70',  data:new Array(labels.length).fill(70), type:'line', borderColor:'rgba(248,113,113,0.2)',  backgroundColor:'transparent', borderWidth:1, borderDash:[3,5], pointRadius:0, yAxisID:'y2', order:-2 },
           { label:'RSI 30',  data:new Array(labels.length).fill(30), type:'line', borderColor:'rgba(74,222,128,0.2)', backgroundColor:'transparent', borderWidth:1, borderDash:[3,5], pointRadius:0, yAxisID:'y2', order:-2 },
@@ -1792,8 +1792,8 @@
         datasets: [
           { label:'Volume',     data:volumes, backgroundColor:volColors, borderWidth:0, yAxisID:'y_vol', order:5 },
           { label:'Preço',      data:closes,  backgroundColor:barColors, borderColor:'transparent', borderWidth:0, order:2 },
-          { label:'Média anual',data:avgs,    type:'line', borderColor:C.ema1, backgroundColor:'transparent', borderWidth:1.5, pointRadius:3, pointBackgroundColor:C.ema1, tension:0.3, spanGaps:true, order:1 },
-          { label:'SMA 4 anos', data:sma4,    type:'line', borderColor:C.ema2, backgroundColor:'transparent', borderWidth:2,   pointRadius:0, tension:0.4, spanGaps:true, order:0 },
+          { label:'Média anual',data:avgs,    type:'line', borderColor:C.ema1, backgroundColor:'rgba(255,159,26,0.07)', fill:'+1', borderWidth:2.5, pointRadius:3, pointBackgroundColor:C.ema1, tension:0.3, spanGaps:true, order:1 },
+          { label:'SMA 4 anos', data:sma4,    type:'line', borderColor:C.ema2, backgroundColor:'transparent',              borderWidth:2.5, pointRadius:0, tension:0.4, spanGaps:true, order:0 },
         ]
       },
       options: {
@@ -1989,7 +1989,7 @@
   let allArticles = [];
   let flipIndex   = 0;
   let flipTimer   = null;
-  const VISIBLE      = 3;
+  const VISIBLE      = 5;
   const FLIP_INTERVAL = 12000;  // 12 segundos entre rotações
   const CHAR_DELAY    = 35;     // ms entre cada char (mais lento)
   const LINE_DELAY    = 500;    // ms entre linhas (mais espaçado)
