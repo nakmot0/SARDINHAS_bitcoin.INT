@@ -233,6 +233,21 @@
       border: 1px solid var(--border);
       border-radius: 2px;
       padding: 20px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card-sparkline {
+      position: absolute;
+      inset: 0;
+      width: 100% !important;
+      height: 100% !important;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .card > *:not(.card-sparkline) {
+      position: relative;
+      z-index: 1;
     }
 
     .card-title {
@@ -912,16 +927,19 @@
   <!-- OURO / ETH / PETRÓLEO -->
   <div class="grid-3">
     <div class="card">
+      <canvas id="gold-sparkline" class="card-sparkline"></canvas>
       <div class="card-title" data-i18n="gold-title">Ouro em BTC</div>
       <div class="card-val" id="gold-btc">-- BTC</div>
       <div class="card-desc" id="gold-usd">-- USD/oz</div>
     </div>
     <div class="card">
+      <canvas id="eth-sparkline" class="card-sparkline"></canvas>
       <div class="card-title" data-i18n="eth-title">Ethereum em BTC</div>
       <div class="card-val" id="eth-btc">-- BTC</div>
       <div class="card-desc" id="eth-usd">-- USD</div>
     </div>
     <div class="card">
+      <canvas id="oil-sparkline" class="card-sparkline"></canvas>
       <div class="card-title" data-i18n="oil-title">Petróleo WTI em BTC</div>
       <div class="card-val" id="crude-btc">-- BTC</div>
       <div class="card-desc" id="crude-desc">-- USD/barril</div>
@@ -1901,6 +1919,72 @@
     } catch(e) { console.warn('hero sparkline:', e); }
   }
 
+  // ── SPARKLINES DAS ASSETS (Gold/BTC, ETH/BTC, Oil/BTC) 24h ──
+  async function loadAssetSparklines() {
+    try {
+      const r = await fetch('/api/ohlc/assets24h?t=' + Date.now());
+      const d = await r.json();
+
+      const defs = [
+        { key: 'gold', id: 'gold-sparkline',  color: [255, 215,   0] },
+        { key: 'eth',  id: 'eth-sparkline',   color: [ 98, 126, 234] },
+        { key: 'oil',  id: 'oil-sparkline',   color: [180, 180, 180] },
+      ];
+
+      for (const def of defs) {
+        const pts = d[def.key];
+        if (!pts || pts.length < 2) continue;
+
+        const vals  = pts.map(p => p.v);
+        const first = vals[0];
+        const last  = vals[vals.length - 1];
+        const isUp  = last >= first;
+        const [rr, gg, bb] = def.color;
+
+        const canvas = document.getElementById(def.id);
+        if (!canvas) continue;
+
+        if (_chartInstances[def.id]) {
+          _chartInstances[def.id].destroy();
+          delete _chartInstances[def.id];
+        }
+
+        const ctx  = canvas.getContext('2d');
+        const h    = canvas.parentElement?.offsetHeight || 100;
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        const alpha = isUp ? 0.13 : 0.06;
+        grad.addColorStop(0, `rgba(${rr},${gg},${bb},${alpha})`);
+        grad.addColorStop(1, `rgba(${rr},${gg},${bb},0)`);
+
+        _chartInstances[def.id] = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: vals.map((_, i) => i),
+            datasets: [{
+              data: vals,
+              borderColor: `rgba(${rr},${gg},${bb},${isUp ? 0.45 : 0.2})`,
+              backgroundColor: grad,
+              borderWidth: 1,
+              pointRadius: 0,
+              tension: 0.45,
+              fill: true,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 1200, easing: 'easeInOutQuart' },
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: {
+              x: { display: false },
+              y: { display: false }
+            }
+          }
+        });
+      }
+    } catch(e) { console.warn('asset sparklines:', e); }
+  }
+
   // ── PREÇOS AO VIVO ──
   async function loadPrices() {
     try {
@@ -2085,7 +2169,8 @@
       loadAnalysis();     // data.json
       loadFearGreed();    // fear & greed
       loadNews();         // notícias
-      loadHeroSparkline(); // sparkline 24h + high/low
+      loadHeroSparkline();    // sparkline 24h + high/low
+      loadAssetSparklines();  // sparklines gold/eth/oil
       const now = new Date();
       const loc = _lang === 'pt' ? 'pt-PT' : 'en-GB';
       document.getElementById('updated').textContent =
@@ -2235,8 +2320,9 @@
       buildCycleChart(_cycleCurrentDay);
       loadPrices(); // repõe o ponto live
     }
-    // 2. Sparkline
+    // 2. Sparklines
     loadHeroSparkline();
+    loadAssetSparklines();
     // 3. OHLC tab activo
     ['weekly','monthly','yearly'].forEach(tf => { delete _chartLoaded[tf]; });
     const activePanel = document.querySelector('.chart-panel.active');
@@ -2516,9 +2602,11 @@
   loadNews();
   loadAgentSummary();
   loadCycleStats();
-  // Sparkline: carrega após layout estar pronto, refresca a cada 5 min
+  // Sparklines: carregam após layout estar pronto, refrescam a cada 5 min
   setTimeout(loadHeroSparkline, 300);
+  setTimeout(loadAssetSparklines, 500);
   setInterval(loadHeroSparkline, 300000);
+  setInterval(loadAssetSparklines, 300000);
   setInterval(loadCycleStats, 3600000);
   setInterval(tickBTC, 3000);
   setInterval(tickTimer, 1000);
