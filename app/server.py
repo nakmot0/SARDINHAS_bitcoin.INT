@@ -7,6 +7,7 @@ import sqlite3
 import hashlib
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -141,6 +142,7 @@ CACHE_TTL = {
     "news": 600,  # notícias: 10 min (evita sobrecarga RSS)
     "feargreed": 3600,
     "agent_summary": 900,  # 15 min
+    "btc_rank": 1800,  # rank global: 30 min
 }
 
 
@@ -168,6 +170,58 @@ def get_dashboard_data():
             "editorial": "Aguardando primeira análise...",
             "updated": datetime.now().strftime("%d/%m/%Y %H:%M"),
         }
+
+
+# ── BITCOIN GLOBAL RANK ───────────────────────────────────────────────────────
+# Compara market cap BTC vs ouro + top empresas (Stooq) para calcular rank global
+_RANK_COMPANIES = [
+    # (stooq_ticker, shares_outstanding_aprox)
+    ("nvda.us",  24_400_000_000),
+    ("aapl.us",  15_200_000_000),
+    ("msft.us",   7_440_000_000),
+    ("googl.us", 12_100_000_000),
+    ("amzn.us",  10_500_000_000),
+    ("meta.us",   2_540_000_000),
+    ("avgo.us",   4_800_000_000),
+    ("tsla.us",   3_210_000_000),
+    ("brk-b.us",  2_160_000_000),
+    ("lly.us",      896_000_000),
+    ("jpm.us",    2_810_000_000),
+]
+
+
+def _stooq_mc(ticker, shares):
+    try:
+        r = requests.get(
+            f"https://stooq.com/q/l/?s={ticker}&f=c&h&e=csv",
+            headers={"User-Agent": "Mozilla/5.0"}, timeout=6,
+        )
+        r.raise_for_status()
+        price = float(r.text.strip().split("\n")[-1].strip().split(",")[-1])
+        return price * shares if price > 0 else 0
+    except Exception:
+        return 0
+
+
+def fetch_btc_rank(btc_usd, gold_usd=None):
+    """Devolve a posição global do BTC por market cap (ouro + top empresas)."""
+    btc_mc = btc_usd * 19_850_000
+    market_caps = [btc_mc]
+    if gold_usd:
+        market_caps.append(gold_usd * 6_915_000_000)  # ~6.9B troy oz acima do solo
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        futures = {ex.submit(_stooq_mc, t, s): (t, s) for t, s in _RANK_COMPANIES}
+        for f in as_completed(futures):
+            mc = f.result()
+            if mc > 0:
+                market_caps.append(mc)
+
+    ranked = sorted(market_caps, reverse=True)
+    try:
+        return ranked.index(btc_mc) + 1
+    except ValueError:
+        return None
 
 
 # ── FETCH PREÇOS (Kraken + Coinpaprika + Stooq) ───────────────────────────────
@@ -459,33 +513,19 @@ def fetch_prices():
     except Exception as e:
         logger.warning(f"Yahoo NASDAQ: {e}")
 
-    # ── Bitcoin Rank: companiesmarketcap.com ─────────────────────────────────
-    try:
-        r = requests.get(
-            "https://companiesmarketcap.com/assets-by-market-cap/",
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
-            timeout=15,
-        )
-        r.raise_for_status()
-        html = r.text
-        # Strategy 1: find href to /bitcoin/ page and look backwards for rank
-        idx = html.lower().find('href="/bitcoin/')
-        if idx < 0:
-            idx = html.lower().find('href="/assets/bitcoin/')
-        if idx > 0:
-            snippet = html[max(0, idx - 400):idx]
-            m = re.search(r'>(\d+)<', snippet)
-            if m:
-                result["btc_rank"] = int(m.group(1))
-                logger.info(f"BTC rank (companiesmarketcap): #{result['btc_rank']}")
-        # Strategy 2: look for rank number adjacent to "Bitcoin" text
-        if not result["btc_rank"]:
-            m = re.search(r'>(\d+)<[^>]{0,60}>Bitcoin<', html)
-            if m:
-                result["btc_rank"] = int(m.group(1))
-                logger.info(f"BTC rank alt (companiesmarketcap): #{result['btc_rank']}")
-    except Exception as e:
-        logger.warning(f"CompaniesMarketCap rank: {e}")
+    # ── Bitcoin Global Rank (cache 30 min) ───────────────────────────────────
+    cached_rank = cache_get("btc_rank")
+    if cached_rank is not None:
+        result["btc_rank"] = cached_rank
+    elif result["btc_usd"]:
+        try:
+            rank = fetch_btc_rank(result["btc_usd"], result.get("gold_usd"))
+            if rank:
+                result["btc_rank"] = rank
+                cache_set("btc_rank", rank)
+                logger.info(f"BTC global rank calculado: #{rank}")
+        except Exception as e:
+            logger.warning(f"BTC rank: {e}")
 
     result["updated"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     return result
