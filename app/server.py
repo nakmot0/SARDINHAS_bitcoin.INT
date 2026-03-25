@@ -2,6 +2,7 @@ import os
 import re
 import json
 import time
+import bisect
 import sqlite3
 import hashlib
 import logging
@@ -1472,6 +1473,107 @@ def api_cycle_stats():
         f"CycleStats: high=${high_val:,.0f} ({fmt_date(high_ts)}), "
         f"low=${low_val:,.0f} ({fmt_date(low_ts)})"
     )
+    return jsonify(result), 200
+
+
+@app.route("/api/ohlc/assets24h")
+def api_assets24h():
+    """Dados horários 24h para sparklines de ETH/BTC, Gold/BTC e Oil/BTC."""
+    cached = _ohlc_cache.get("assets24h")
+    if cached and (time.time() - cached["ts"]) < 300:
+        return jsonify(cached["data"]), 200
+
+    H = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+    result = {"eth": [], "gold": [], "oil": [], "updated": datetime.now().strftime("%H:%M")}
+
+    # ── ETH/BTC: Kraken ETHXBT 1h OHLC ──────────────────────────────────────
+    try:
+        r = requests.get(
+            "https://api.kraken.com/0/public/OHLC?pair=ETHXBT&interval=60",
+            headers=H, timeout=10,
+        )
+        r.raise_for_status()
+        d = r.json().get("result", {})
+        key = next((k for k in d if k != "last"), None)
+        if key:
+            candles = d[key][-25:]
+            result["eth"] = [{"t": int(c[0]), "v": float(c[4])} for c in candles]
+            logger.info(f"Assets24h ETH/BTC: {len(result['eth'])} velas")
+    except Exception as e:
+        logger.warning(f"Assets24h ETH/BTC: {e}")
+
+    # ── Gold/BTC: CoinGecko XAUT vs BTC ──────────────────────────────────────
+    # days=1 → ~288 pontos (5-min); reduzimos para ~25 por amostragem uniforme
+    try:
+        r = requests.get(
+            "https://api.coingecko.com/api/v3/coins/tether-gold/market_chart"
+            "?vs_currency=btc&days=1",
+            headers=H, timeout=12,
+        )
+        r.raise_for_status()
+        prices = r.json().get("prices", [])
+        if prices:
+            # Amostrar ~25 pontos uniformemente
+            step = max(1, len(prices) // 25)
+            sampled = prices[::step][-25:]
+            result["gold"] = [{"t": int(p[0] / 1000), "v": float(p[1])} for p in sampled]
+            logger.info(f"Assets24h Gold/BTC: {len(result['gold'])} pontos (de {len(prices)})")
+    except Exception as e:
+        logger.warning(f"Assets24h Gold/BTC: {e}")
+
+    # ── Oil/BTC: Yahoo Finance CL=F 1h + Kraken BTC 1h ───────────────────────
+    # Reutiliza sempre o cache de h24 se disponível para evitar chamada dupla ao Kraken
+    try:
+        ry = requests.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/CL=F?interval=1h&range=2d",
+            headers={"User-Agent": "Mozilla/5.0"}, timeout=10,
+        )
+        ry.raise_for_status()
+        dy = ry.json()
+        chart_res = (dy.get("chart") or {}).get("result") or []
+        if not chart_res:
+            raise ValueError("Yahoo Finance: sem dados CL=F")
+        timestamps_y = chart_res[0]["timestamp"]
+        closes_oil   = chart_res[0]["indicators"]["quote"][0]["close"]
+
+        # Construir mapa BTC timestamp→close (preferir cache h24)
+        btc_map = {}
+        h24_c = _ohlc_cache.get("h24")
+        if h24_c and h24_c.get("data", {}).get("bars"):
+            for b in h24_c["data"]["bars"]:
+                btc_map[b["t"]] = b["c"]
+        if not btc_map:
+            rb = requests.get(
+                "https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=60",
+                headers=H, timeout=10,
+            )
+            rb.raise_for_status()
+            db_k = rb.json().get("result", {})
+            btc_key = next((k for k in db_k if k != "last"), None)
+            if btc_key:
+                for c in db_k[btc_key][-25:]:
+                    btc_map[int(c[0])] = float(c[4])
+
+        if btc_map:
+            btc_ts_sorted = sorted(btc_map.keys())
+            oil_bars = []
+            for ts, close in zip(timestamps_y, closes_oil):
+                if close is None or close <= 0:
+                    continue
+                # Bisect: O(log n) para encontrar timestamp BTC mais próximo
+                idx = bisect.bisect_left(btc_ts_sorted, ts)
+                candidates = btc_ts_sorted[max(0, idx - 1): idx + 2]
+                if not candidates:
+                    continue
+                nearest = min(candidates, key=lambda x: abs(x - ts))
+                if abs(nearest - ts) < 7200 and btc_map[nearest] > 0:
+                    oil_bars.append({"t": ts, "v": round(close / btc_map[nearest], 8)})
+            result["oil"] = oil_bars[-25:]
+            logger.info(f"Assets24h Oil/BTC: {len(result['oil'])} pontos")
+    except Exception as e:
+        logger.warning(f"Assets24h Oil/BTC: {e}")
+
+    _ohlc_cache["assets24h"] = {"data": result, "ts": time.time()}
     return jsonify(result), 200
 
 
