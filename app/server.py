@@ -1180,9 +1180,9 @@ OHLC_TTL = {"weekly": 3600, "monthly": 7200, "yearly": 86400}
 def api_ohlc(timeframe):
     """
     OHLC histórico BTC com fontes por prioridade:
-      weekly  → Kraken primary (interval=10080 min), Binance fallback, CryptoCompare last resort
-      monthly → Binance primary (1M interval), CryptoCompare fallback
-      yearly  → Binance primary (1M → group by year), CryptoCompare fallback
+      weekly  → Kraken primary, Yahoo Finance fallback, Bybit last resort
+      monthly → Yahoo Finance primary (1mo), Bybit fallback
+      yearly  → Yahoo Finance monthly → group by year, Bybit fallback
     """
     if timeframe not in ("weekly", "monthly", "yearly"):
         return jsonify({"error": "timeframe inválido"}), 400
@@ -1236,132 +1236,136 @@ def api_ohlc(timeframe):
             errors.append(f"Kraken: {e}")
             bars = None
 
-    # ── 2. BINANCE — mensal/anual (primary), semanal (fallback) ──────────────
+    # ── 2. YAHOO FINANCE — mensal/anual (primary), semanal (fallback) ────────
     if bars is None:
         try:
-            BASE_BN = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT"
+            YH = {"User-Agent": "Mozilla/5.0"}
             if timeframe == "weekly":
-                url_bn = f"{BASE_BN}&interval=1w&limit=250"
-            elif timeframe == "monthly":
-                url_bn = f"{BASE_BN}&interval=1M&limit=96"
+                url_yf = "https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD?interval=1wk&range=5y"
             else:
-                url_bn = f"{BASE_BN}&interval=1M&limit=180"
+                url_yf = "https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD?interval=1mo&range=10y"
 
-            r = requests.get(url_bn, headers=H, timeout=15)
-            r.raise_for_status()
-            data = r.json()
-            if not data or not isinstance(data, list):
-                raise ValueError("resposta Binance inválida")
+            ry = requests.get(url_yf, headers=YH, timeout=15)
+            ry.raise_for_status()
+            dy = ry.json()
+            res_yf = dy["chart"]["result"][0]
+            tss    = res_yf["timestamp"]
+            qt     = res_yf["indicators"]["quote"][0]
+            opens  = qt.get("open",   [None] * len(tss))
+            highs  = qt.get("high",   [None] * len(tss))
+            lows   = qt.get("low",    [None] * len(tss))
+            closes = qt.get("close",  [None] * len(tss))
+            vols   = qt.get("volume", [0]    * len(tss))
 
-            def lbl_bn(ts_ms, tf):
-                dt = datetime.utcfromtimestamp(ts_ms / 1000)
+            raw = []
+            for i, ts in enumerate(tss):
+                cl = closes[i]
+                if cl is None or cl <= 0:
+                    continue
+                raw.append((ts, opens[i] or cl, highs[i] or cl, lows[i] or cl, cl, vols[i] or 0))
+
+            if not raw:
+                raise ValueError("Yahoo Finance sem velas válidas")
+
+            def lbl_yf(ts, tf):
+                d2 = datetime.utcfromtimestamp(ts)
+                return d2.strftime("%d %b %y") if tf == "weekly" else d2.strftime("%b %Y")
+
+            if timeframe in ("weekly", "monthly"):
+                bars = [{
+                    "t": b[0], "o": round(b[1], 2), "h": round(b[2], 2),
+                    "l": round(b[3], 2), "c": round(b[4], 2), "v": round(b[5], 2),
+                    "avg": round((b[1] + b[4]) / 2, 2),
+                    "label": lbl_yf(b[0], timeframe),
+                } for b in raw]
+            else:
+                yd = _dd(list)
+                for b in raw:
+                    yd[datetime.utcfromtimestamp(b[0]).year].append(b)
+                bars = []
+                for year in sorted(yd.keys()):
+                    yc = yd[year]
+                    bars.append({
+                        "t": yc[0][0],
+                        "o": round(yc[0][1], 2),
+                        "h": round(max(b[2] for b in yc), 2),
+                        "l": round(min(b[3] for b in yc), 2),
+                        "c": round(yc[-1][4], 2),
+                        "v": round(sum(b[5] for b in yc), 2),
+                        "avg": round(sum(b[4] for b in yc) / len(yc), 2),
+                        "label": str(year),
+                    })
+
+            logger.info(f"OHLC {timeframe}: {len(bars)} barras via Yahoo Finance")
+        except Exception as e:
+            errors.append(f"Yahoo Finance: {e}")
+            bars = None
+
+    # ── 3. BYBIT — fallback ───────────────────────────────────────────────────
+    if bars is None:
+        try:
+            if timeframe == "weekly":
+                url_by = "https://api.bybit.com/v5/market/kline?category=spot&symbol=BTCUSDT&interval=W&limit=250"
+            else:
+                url_by = "https://api.bybit.com/v5/market/kline?category=spot&symbol=BTCUSDT&interval=M&limit=180"
+
+            rb = requests.get(url_by, headers=H, timeout=15)
+            rb.raise_for_status()
+            db = rb.json()
+            if db.get("retCode") != 0:
+                raise ValueError(f"Bybit: {db.get('retMsg', 'erro')}")
+            klines = list(reversed(db["result"]["list"]))
+            if not klines:
+                raise ValueError("Bybit sem dados")
+
+            def lbl_by(ts_ms, tf):
+                d2 = datetime.utcfromtimestamp(int(ts_ms) / 1000)
                 if tf == "weekly":
-                    return dt.strftime("%d %b %y")
+                    return d2.strftime("%d %b %y")
                 elif tf == "monthly":
-                    return dt.strftime("%b %Y")
-                else:
-                    return str(dt.year)
+                    return d2.strftime("%b %Y")
+                return str(d2.year)
 
             if timeframe in ("weekly", "monthly"):
                 bars = []
-                for c in data:
-                    cl = float(c[4])
+                for k in klines:
+                    cl = float(k[4])
                     if cl <= 0:
                         continue
-                    bars.append(
-                        {
-                            "t": int(c[0]) // 1000,
-                            "o": round(float(c[1]), 2),
-                            "h": round(float(c[2]), 2),
-                            "l": round(float(c[3]), 2),
-                            "c": round(cl, 2),
-                            "v": round(float(c[5]), 2),
-                            "avg": round((float(c[1]) + cl) / 2, 2),
-                            "label": lbl_bn(int(c[0]), timeframe),
-                        }
-                    )
+                    bars.append({
+                        "t": int(k[0]) // 1000,
+                        "o": round(float(k[1]), 2), "h": round(float(k[2]), 2),
+                        "l": round(float(k[3]), 2), "c": round(cl, 2),
+                        "v": round(float(k[5]), 2),
+                        "avg": round((float(k[1]) + cl) / 2, 2),
+                        "label": lbl_by(k[0], timeframe),
+                    })
             else:
-                # yearly: aggregate monthly candles by year
-                yearly_d = _dd(list)
-                for c in data:
-                    dt = datetime.utcfromtimestamp(int(c[0]) / 1000)
-                    yearly_d[dt.year].append(c)
+                yd2 = _dd(list)
+                for k in klines:
+                    yd2[datetime.utcfromtimestamp(int(k[0]) / 1000).year].append(k)
                 bars = []
-                for year in sorted(yearly_d.keys()):
-                    yc = yearly_d[year]
-                    if not yc:
-                        continue
+                for year in sorted(yd2.keys()):
+                    yc = yd2[year]
                     cl = float(yc[-1][4])
                     if cl <= 0:
                         continue
-                    bars.append(
-                        {
-                            "t": int(yc[0][0]) // 1000,
-                            "o": round(float(yc[0][1]), 2),
-                            "h": round(max(float(c[2]) for c in yc), 2),
-                            "l": round(min(float(c[3]) for c in yc), 2),
-                            "c": round(cl, 2),
-                            "v": round(sum(float(c[5]) for c in yc), 2),
-                            "avg": round(sum(float(c[4]) for c in yc) / len(yc), 2),
-                            "label": str(year),
-                        }
-                    )
+                    bars.append({
+                        "t": int(yc[0][0]) // 1000,
+                        "o": round(float(yc[0][1]), 2),
+                        "h": round(max(float(k[2]) for k in yc), 2),
+                        "l": round(min(float(k[3]) for k in yc), 2),
+                        "c": round(cl, 2),
+                        "v": round(sum(float(k[5]) for k in yc), 2),
+                        "avg": round(sum(float(k[4]) for k in yc) / len(yc), 2),
+                        "label": str(year),
+                    })
 
             if not bars:
-                raise ValueError("Binance retornou 0 barras")
-            logger.info(f"OHLC {timeframe}: {len(bars)} barras via Binance")
+                raise ValueError("Bybit retornou 0 barras")
+            logger.info(f"OHLC {timeframe}: {len(bars)} barras via Bybit")
         except Exception as e:
-            errors.append(f"Binance: {e}")
-            bars = None
-
-    # ── 3. CRYPTOCOMPARE — fallback ────────────────────────────────────────────
-    if bars is None:
-        try:
-            BASE_CC = (
-                "https://min-api.cryptocompare.com/data/v2/histoday?fsym=BTC&tsym=USD"
-            )
-            if timeframe == "weekly":
-                url_cc = f"{BASE_CC}&aggregate=7&limit=250"
-            elif timeframe == "monthly":
-                url_cc = f"{BASE_CC}&aggregate=30&limit=84"
-            else:
-                url_cc = f"{BASE_CC}&aggregate=365&limit=14"
-
-            rc = requests.get(url_cc, headers=H, timeout=15)
-            rc.raise_for_status()
-            dc = rc.json()
-            if dc.get("Response") == "Error":
-                raise ValueError(dc.get("Message", "CryptoCompare erro"))
-
-            candles = [c for c in dc["Data"]["Data"] if c.get("close", 0) > 0]
-            if not candles:
-                raise ValueError("CryptoCompare sem velas válidas")
-
-            def lbl_cc(ts, tf):
-                dt = datetime.utcfromtimestamp(ts)
-                if tf == "weekly":
-                    return dt.strftime("%d %b %y")
-                elif tf == "monthly":
-                    return dt.strftime("%b %Y")
-                else:
-                    return str(dt.year)
-
-            bars = [
-                {
-                    "t": int(c["time"]),
-                    "o": round(float(c["open"]), 2),
-                    "h": round(float(c["high"]), 2),
-                    "l": round(float(c["low"]), 2),
-                    "c": round(float(c["close"]), 2),
-                    "v": round(float(c.get("volumefrom", 0)), 2),
-                    "avg": round((float(c["open"]) + float(c["close"])) / 2, 2),
-                    "label": lbl_cc(int(c["time"]), timeframe),
-                }
-                for c in candles
-            ]
-            logger.info(f"OHLC {timeframe}: {len(bars)} barras via CryptoCompare")
-        except Exception as e:
-            errors.append(f"CryptoCompare: {e}")
+            errors.append(f"Bybit: {e}")
             bars = None
 
     if not bars:
@@ -1391,46 +1395,59 @@ def api_cycle_stats():
 
     H = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
     candles = None
+    halving_s = HALVING_4_MS // 1000
 
-    # Primary: Binance — velas diárias desde o halving
+    # Primary: Yahoo Finance — velas diárias desde o halving
     try:
-        r = requests.get(
-            f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d"
-            f"&startTime={HALVING_4_MS}&limit=1000",
-            headers=H,
+        ry = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD"
+            f"?interval=1d&period1={halving_s}&period2={int(time.time())}",
+            headers={"User-Agent": "Mozilla/5.0"},
             timeout=15,
         )
-        r.raise_for_status()
-        data = r.json()
-        if not data or not isinstance(data, list):
-            raise ValueError("resposta inválida")
-        candles = [(int(c[0]) // 1000, float(c[2]), float(c[3])) for c in data]
-        logger.info(f"CycleStats: {len(candles)} dias via Binance")
+        ry.raise_for_status()
+        dy = ry.json()
+        res_yf = dy["chart"]["result"][0]
+        tss   = res_yf["timestamp"]
+        qt    = res_yf["indicators"]["quote"][0]
+        highs = qt.get("high", [None] * len(tss))
+        lows  = qt.get("low",  [None] * len(tss))
+        candles = [
+            (ts, hi, lo)
+            for ts, hi, lo in zip(tss, highs, lows)
+            if hi is not None and lo is not None and hi > 0
+        ]
+        if not candles:
+            raise ValueError("Yahoo Finance: 0 candles válidos")
+        logger.info(f"CycleStats: {len(candles)} dias via Yahoo Finance")
     except Exception as e:
-        logger.warning(f"CycleStats Binance: {e}")
+        logger.warning(f"CycleStats Yahoo: {e}")
+        candles = None
 
-    # Fallback: CryptoCompare
+    # Fallback: Bybit daily
     if candles is None:
         try:
-            rc = requests.get(
-                "https://min-api.cryptocompare.com/data/v2/histoday"
-                "?fsym=BTC&tsym=USD&limit=800",
+            rb = requests.get(
+                f"https://api.bybit.com/v5/market/kline?category=spot"
+                f"&symbol=BTCUSDT&interval=D&start={HALVING_4_MS}&limit=1000",
                 headers=H,
                 timeout=15,
             )
-            rc.raise_for_status()
-            dc = rc.json()
-            if dc.get("Response") == "Error":
-                raise ValueError(dc.get("Message", "CryptoCompare erro"))
-            all_c = [c for c in dc["Data"]["Data"] if c.get("high", 0) > 0]
-            halving_s = HALVING_4_MS // 1000
+            rb.raise_for_status()
+            db = rb.json()
+            if db.get("retCode") != 0:
+                raise ValueError(f"Bybit: {db.get('retMsg')}")
+            klines = list(reversed(db["result"]["list"]))
             candles = [
-                (int(c["time"]), float(c["high"]), float(c["low"]))
-                for c in all_c if int(c["time"]) >= halving_s
+                (int(k[0]) // 1000, float(k[2]), float(k[3]))
+                for k in klines
+                if float(k[4]) > 0 and int(k[0]) // 1000 >= halving_s
             ]
-            logger.info(f"CycleStats: {len(candles)} dias via CryptoCompare")
+            if not candles:
+                raise ValueError("Bybit: 0 candles válidos")
+            logger.info(f"CycleStats: {len(candles)} dias via Bybit")
         except Exception as e2:
-            logger.error(f"CycleStats CryptoCompare: {e2}")
+            logger.error(f"CycleStats Bybit: {e2}")
             return jsonify({"error": str(e2)}), 502
 
     if not candles:
