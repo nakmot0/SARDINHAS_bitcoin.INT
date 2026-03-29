@@ -199,9 +199,11 @@ _RANK_COMPANIES = [
 def _yahoo_mc(ticker, shares, fx):
     """Busca preço via Yahoo Finance v8 e calcula market cap em USD."""
     try:
-        r = requests.get(
-            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1d",
-            headers={"User-Agent": "Mozilla/5.0"}, timeout=8,
+        _c = _get_yf_crumb()
+        r = _yf_session.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1d"
+            + (f"&crumb={_c}" if _c else ""),
+            timeout=8,
         )
         r.raise_for_status()
         closes = r.json()["chart"]["result"][0]["indicators"]["quote"][0]["close"]
@@ -409,11 +411,11 @@ def fetch_prices():
 
     # ── Petróleo WTI: Yahoo Finance (primário, funciona em cloud) ────────────
     crude_usd = None
+    _yf_c = _get_yf_crumb()
     try:
-        ry = requests.get(
+        ry = _yf_session.get(
             "https://query1.finance.yahoo.com/v8/finance/chart/CL=F"
-            "?interval=1d&range=5d",
-            headers={"User-Agent": "Mozilla/5.0"},
+            "?interval=1d&range=5d" + (f"&crumb={_yf_c}" if _yf_c else ""),
             timeout=10,
         )
         ry.raise_for_status()
@@ -467,10 +469,9 @@ def fetch_prices():
 
     # ── S&P 500: Yahoo Finance ^GSPC ─────────────────────────────────────────
     try:
-        ry = requests.get(
+        ry = _yf_session.get(
             "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC"
-            "?interval=1d&range=5d",
-            headers={"User-Agent": "Mozilla/5.0"},
+            "?interval=1d&range=5d" + (f"&crumb={_yf_c}" if _yf_c else ""),
             timeout=10,
         )
         ry.raise_for_status()
@@ -487,10 +488,9 @@ def fetch_prices():
 
     # ── Prata: Yahoo Finance SI=F ─────────────────────────────────────────────
     try:
-        ry = requests.get(
+        ry = _yf_session.get(
             "https://query1.finance.yahoo.com/v8/finance/chart/SI=F"
-            "?interval=1d&range=5d",
-            headers={"User-Agent": "Mozilla/5.0"},
+            "?interval=1d&range=5d" + (f"&crumb={_yf_c}" if _yf_c else ""),
             timeout=10,
         )
         ry.raise_for_status()
@@ -507,10 +507,9 @@ def fetch_prices():
 
     # ── NASDAQ: Yahoo Finance ^IXIC ───────────────────────────────────────────
     try:
-        ry = requests.get(
+        ry = _yf_session.get(
             "https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC"
-            "?interval=1d&range=5d",
-            headers={"User-Agent": "Mozilla/5.0"},
+            "?interval=1d&range=5d" + (f"&crumb={_yf_c}" if _yf_c else ""),
             timeout=10,
         )
         ry.raise_for_status()
@@ -1321,6 +1320,41 @@ from collections import defaultdict as _dd
 _ohlc_cache = {}
 OHLC_TTL = {"weekly": 3600, "monthly": 7200, "yearly": 86400}
 
+# ── Yahoo Finance crumb (obrigatório desde 2025) ──────────────────────────────
+_yf_crumb_cache: dict = {"crumb": None, "ts": 0.0}
+_yf_session = requests.Session()
+_yf_crumb_lock = threading.Lock()
+
+
+def _get_yf_crumb() -> str | None:
+    """Devolve crumb válido para Yahoo Finance v8 API (cache 15 min)."""
+    with _yf_crumb_lock:
+        if _yf_crumb_cache["crumb"] and (time.time() - _yf_crumb_cache["ts"]) < 900:
+            return _yf_crumb_cache["crumb"]
+        try:
+            _yf_session.headers.update({
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                )
+            })
+            _yf_session.get("https://fc.yahoo.com/", timeout=8)
+            r = _yf_session.get(
+                "https://query1.finance.yahoo.com/v1/test/getcrumb",
+                timeout=8,
+            )
+            r.raise_for_status()
+            crumb = r.text.strip()
+            if crumb and len(crumb) > 2:
+                _yf_crumb_cache["crumb"] = crumb
+                _yf_crumb_cache["ts"] = time.time()
+                logger.info("Yahoo Finance: crumb renovado")
+                return crumb
+        except Exception as e:
+            logger.warning(f"Yahoo Finance crumb: {e}")
+        return None
+
 
 @app.route("/api/ohlc/<timeframe>")
 def api_ohlc(timeframe):
@@ -1385,13 +1419,14 @@ def api_ohlc(timeframe):
     # ── 2. YAHOO FINANCE — mensal/anual (primary), semanal (fallback) ────────
     if bars is None:
         try:
-            YH = {"User-Agent": "Mozilla/5.0"}
             if timeframe == "weekly":
                 url_yf = "https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD?interval=1wk&range=5y"
             else:
                 url_yf = "https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD?interval=1mo&range=10y"
-
-            ry = requests.get(url_yf, headers=YH, timeout=15)
+            _yf_c = _get_yf_crumb()
+            if _yf_c:
+                url_yf += f"&crumb={_yf_c}"
+            ry = _yf_session.get(url_yf, timeout=15)
             ry.raise_for_status()
             dy = ry.json()
             res_yf = dy["chart"]["result"][0]
@@ -1545,10 +1580,11 @@ def api_cycle_stats():
 
     # Primary: Yahoo Finance — velas diárias desde o halving
     try:
-        ry = requests.get(
+        _yf_c = _get_yf_crumb()
+        ry = _yf_session.get(
             f"https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD"
-            f"?interval=1d&period1={halving_s}&period2={int(time.time())}",
-            headers={"User-Agent": "Mozilla/5.0"},
+            f"?interval=1d&period1={halving_s}&period2={int(time.time())}"
+            + (f"&crumb={_yf_c}" if _yf_c else ""),
             timeout=15,
         )
         ry.raise_for_status()
@@ -1621,6 +1657,64 @@ def api_cycle_stats():
     return jsonify(result), 200
 
 
+@app.route("/api/ohlc/cycle-daily")
+def api_ohlc_cycle_daily():
+    """Série diária de closes BTC desde o halving de Abril 2024."""
+    cached = _ohlc_cache.get("cycle_daily")
+    if cached and (time.time() - cached["ts"]) < 3600:
+        return jsonify(cached["data"]), 200
+
+    H = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+    halving_s = HALVING_4_MS // 1000
+    bars = None
+
+    try:
+        _yf_c = _get_yf_crumb()
+        ry = _yf_session.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD"
+            f"?interval=1d&period1={halving_s}&period2={int(time.time())}"
+            + (f"&crumb={_yf_c}" if _yf_c else ""),
+            timeout=15,
+        )
+        ry.raise_for_status()
+        dy = ry.json()
+        res_yf = dy["chart"]["result"][0]
+        tss    = res_yf["timestamp"]
+        closes = res_yf["indicators"]["quote"][0].get("close", [])
+        raw = [(ts, cl) for ts, cl in zip(tss, closes) if cl and cl > 0]
+        if not raw:
+            raise ValueError("0 bars")
+        bars = [{"t": ts, "c": round(cl, 2), "day": i} for i, (ts, cl) in enumerate(raw)]
+        logger.info(f"cycle-daily: {len(bars)} dias via Yahoo Finance")
+    except Exception as e:
+        logger.warning(f"cycle-daily Yahoo: {e}")
+
+    if not bars:
+        try:
+            rb = requests.get(
+                f"https://api.bybit.com/v5/market/kline?category=spot"
+                f"&symbol=BTCUSDT&interval=D&start={HALVING_4_MS}&limit=1000",
+                headers=H, timeout=15,
+            )
+            rb.raise_for_status()
+            db = rb.json()
+            if db.get("retCode") != 0:
+                raise ValueError(db.get("retMsg"))
+            klines = [k for k in reversed(db["result"]["list"]) if float(k[4]) > 0 and int(k[0]) // 1000 >= halving_s]
+            if not klines:
+                raise ValueError("0 bars")
+            bars = [{"t": int(k[0]) // 1000, "c": round(float(k[4]), 2), "day": i} for i, k in enumerate(klines)]
+            logger.info(f"cycle-daily: {len(bars)} dias via Bybit")
+        except Exception as e:
+            logger.error(f"cycle-daily Bybit: {e}")
+            return jsonify({"error": str(e)}), 502
+
+    halving_price = bars[0]["c"] if bars else 63800
+    result = {"bars": bars, "halving_price": round(halving_price, 2), "updated": datetime.now().strftime("%H:%M")}
+    _ohlc_cache["cycle_daily"] = {"data": result, "ts": time.time()}
+    return jsonify(result), 200
+
+
 @app.route("/api/ohlc/assets24h")
 def api_assets24h():
     """Dados horários 24h para sparklines de ETH/BTC, Gold/BTC e Oil/BTC."""
@@ -1630,6 +1724,9 @@ def api_assets24h():
 
     H = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
     result = {"eth": [], "gold": [], "sp500": [], "oil": [], "silver": [], "nasdaq": [], "updated": datetime.now().strftime("%H:%M")}
+
+    _yf_c = _get_yf_crumb()
+    _crumb_qs = f"&crumb={_yf_c}" if _yf_c else ""
 
     # ── Mapa BTC/USD 1h (partilhado por Gold e Oil) ───────────────────────────
     # Reutiliza cache h24 se disponível para evitar chamada dupla ao Kraken
@@ -1683,9 +1780,9 @@ def api_assets24h():
 
     # ── Gold/BTC: Yahoo Finance GC=F 1h → dividir por BTC/USD ───────────────
     try:
-        ry = requests.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1h&range=2d",
-            headers={"User-Agent": "Mozilla/5.0"}, timeout=10,
+        ry = _yf_session.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1h&range=2d" + _crumb_qs,
+            timeout=10,
         )
         ry.raise_for_status()
         dy = ry.json()
@@ -1710,9 +1807,9 @@ def api_assets24h():
 
     # ── Oil/BTC: Yahoo Finance CL=F 1h → dividir por BTC/USD ─────────────────
     try:
-        ry = requests.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/CL=F?interval=1h&range=2d",
-            headers={"User-Agent": "Mozilla/5.0"}, timeout=10,
+        ry = _yf_session.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/CL=F?interval=1h&range=2d" + _crumb_qs,
+            timeout=10,
         )
         ry.raise_for_status()
         dy = ry.json()
@@ -1737,9 +1834,9 @@ def api_assets24h():
 
     # ── SP500/BTC: Yahoo Finance ^GSPC 1h → dividir por BTC/USD ─────────────
     try:
-        ry = requests.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1h&range=2d",
-            headers={"User-Agent": "Mozilla/5.0"}, timeout=10,
+        ry = _yf_session.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1h&range=2d" + _crumb_qs,
+            timeout=10,
         )
         ry.raise_for_status()
         dy = ry.json()
@@ -1764,9 +1861,9 @@ def api_assets24h():
 
     # ── Silver/BTC: Yahoo Finance SI=F 1h → dividir por BTC/USD ─────────────
     try:
-        ry = requests.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/SI=F?interval=1h&range=2d",
-            headers={"User-Agent": "Mozilla/5.0"}, timeout=10,
+        ry = _yf_session.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/SI=F?interval=1h&range=2d" + _crumb_qs,
+            timeout=10,
         )
         ry.raise_for_status()
         dy = ry.json()
@@ -1791,9 +1888,9 @@ def api_assets24h():
 
     # ── NASDAQ/BTC: Yahoo Finance ^IXIC 1h → dividir por BTC/USD ─────────────
     try:
-        ry = requests.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC?interval=1h&range=2d",
-            headers={"User-Agent": "Mozilla/5.0"}, timeout=10,
+        ry = _yf_session.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC?interval=1h&range=2d" + _crumb_qs,
+            timeout=10,
         )
         ry.raise_for_status()
         dy = ry.json()
