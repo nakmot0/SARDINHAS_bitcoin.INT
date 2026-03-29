@@ -467,7 +467,8 @@ def fetch_prices():
         result["crude_usd"] = crude_usd
         result["crude_btc"] = round(crude_usd / result["btc_usd"], 6)
 
-    # ── S&P 500: Yahoo Finance ^GSPC ─────────────────────────────────────────
+    # ── S&P 500: Yahoo Finance ^GSPC → Stooq fallback ────────────────────────
+    sp500_usd = None
     try:
         ry = _yf_session.get(
             "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC"
@@ -478,15 +479,24 @@ def fetch_prices():
         dy = ry.json()
         sp_closes = dy["chart"]["result"][0]["indicators"]["quote"][0]["close"]
         sp_closes = [c for c in sp_closes if c is not None]
-        if sp_closes and result["btc_usd"]:
+        if sp_closes:
             sp500_usd = round(sp_closes[-1], 2)
-            result["sp500_usd"] = sp500_usd
-            result["sp500_btc"] = round(sp500_usd / result["btc_usd"], 6)
             logger.info(f"SP500 (Yahoo): ${sp500_usd:,.0f}")
     except Exception as e:
         logger.warning(f"Yahoo SP500: {e}")
+    if not sp500_usd:
+        try:
+            sp500_usd = stooq_val("^spx", 3000, 7000)
+            if sp500_usd:
+                logger.info(f"SP500 (Stooq): ${sp500_usd:,.0f}")
+        except Exception as e:
+            logger.warning(f"Stooq SP500: {e}")
+    if sp500_usd and result["btc_usd"]:
+        result["sp500_usd"] = round(sp500_usd, 2)
+        result["sp500_btc"] = round(sp500_usd / result["btc_usd"], 6)
 
-    # ── Prata: Yahoo Finance SI=F ─────────────────────────────────────────────
+    # ── Prata: Yahoo Finance SI=F → Stooq fallback ───────────────────────────
+    silver_usd = None
     try:
         ry = _yf_session.get(
             "https://query1.finance.yahoo.com/v8/finance/chart/SI=F"
@@ -497,15 +507,24 @@ def fetch_prices():
         dy = ry.json()
         ag_closes = dy["chart"]["result"][0]["indicators"]["quote"][0]["close"]
         ag_closes = [c for c in ag_closes if c is not None]
-        if ag_closes and result["btc_usd"]:
+        if ag_closes:
             silver_usd = round(ag_closes[-1], 4)
-            result["silver_usd"] = silver_usd
-            result["silver_btc"] = round(silver_usd / result["btc_usd"], 8)
             logger.info(f"Prata (Yahoo SI=F): ${silver_usd:.2f}")
     except Exception as e:
         logger.warning(f"Yahoo Silver: {e}")
+    if not silver_usd:
+        try:
+            silver_usd = stooq_val("si.f", 5, 200)
+            if silver_usd:
+                logger.info(f"Prata (Stooq si.f): ${silver_usd:.2f}")
+        except Exception as e:
+            logger.warning(f"Stooq Silver: {e}")
+    if silver_usd and result["btc_usd"]:
+        result["silver_usd"] = round(float(silver_usd), 4)
+        result["silver_btc"] = round(float(silver_usd) / result["btc_usd"], 8)
 
-    # ── NASDAQ: Yahoo Finance ^IXIC ───────────────────────────────────────────
+    # ── NASDAQ: Yahoo Finance ^IXIC → Stooq fallback ─────────────────────────
+    nasdaq_usd = None
     try:
         ry = _yf_session.get(
             "https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC"
@@ -516,13 +535,21 @@ def fetch_prices():
         dy = ry.json()
         nq_closes = dy["chart"]["result"][0]["indicators"]["quote"][0]["close"]
         nq_closes = [c for c in nq_closes if c is not None]
-        if nq_closes and result["btc_usd"]:
+        if nq_closes:
             nasdaq_usd = round(nq_closes[-1], 2)
-            result["nasdaq_usd"] = nasdaq_usd
-            result["nasdaq_btc"] = round(nasdaq_usd / result["btc_usd"], 6)
             logger.info(f"NASDAQ (Yahoo ^IXIC): ${nasdaq_usd:,.0f}")
     except Exception as e:
         logger.warning(f"Yahoo NASDAQ: {e}")
+    if not nasdaq_usd:
+        try:
+            nasdaq_usd = stooq_val("^ndq", 8000, 30000)
+            if nasdaq_usd:
+                logger.info(f"NASDAQ (Stooq): ${nasdaq_usd:,.0f}")
+        except Exception as e:
+            logger.warning(f"Stooq NASDAQ: {e}")
+    if nasdaq_usd and result["btc_usd"]:
+        result["nasdaq_usd"] = round(nasdaq_usd, 2)
+        result["nasdaq_btc"] = round(nasdaq_usd / result["btc_usd"], 6)
 
     # ── Bitcoin Global Rank (cache 30 min) ───────────────────────────────────
     cached_rank = cache_get("btc_rank")
@@ -1326,34 +1353,67 @@ _yf_session = requests.Session()
 _yf_crumb_lock = threading.Lock()
 
 
-def _get_yf_crumb() -> str | None:
-    """Devolve crumb válido para Yahoo Finance v8 API (cache 15 min)."""
+def _get_yf_crumb():
+    """Devolve crumb válido para Yahoo Finance v8 API (cache 10 min)."""
     with _yf_crumb_lock:
-        if _yf_crumb_cache["crumb"] and (time.time() - _yf_crumb_cache["ts"]) < 900:
+        if _yf_crumb_cache["crumb"] and (time.time() - _yf_crumb_cache["ts"]) < 600:
             return _yf_crumb_cache["crumb"]
-        try:
-            _yf_session.headers.update({
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                )
-            })
-            _yf_session.get("https://fc.yahoo.com/", timeout=8)
-            r = _yf_session.get(
-                "https://query1.finance.yahoo.com/v1/test/getcrumb",
-                timeout=8,
-            )
-            r.raise_for_status()
-            crumb = r.text.strip()
-            if crumb and len(crumb) > 2:
-                _yf_crumb_cache["crumb"] = crumb
-                _yf_crumb_cache["ts"] = time.time()
-                logger.info("Yahoo Finance: crumb renovado")
-                return crumb
-        except Exception as e:
-            logger.warning(f"Yahoo Finance crumb: {e}")
+        hdrs = {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        }
+        _yf_session.headers.update(hdrs)
+        for base in ("https://finance.yahoo.com/", "https://www.yahoo.com/"):
+            try:
+                _yf_session.get(base, timeout=10)
+                break
+            except Exception:
+                continue
+        for endpoint in (
+            "https://query1.finance.yahoo.com/v1/test/getcrumb",
+            "https://query2.finance.yahoo.com/v1/test/getcrumb",
+        ):
+            try:
+                r = _yf_session.get(endpoint, timeout=8)
+                if r.status_code == 200:
+                    crumb = r.text.strip()
+                    if crumb and len(crumb) > 2 and crumb.lower() != "null":
+                        _yf_crumb_cache["crumb"] = crumb
+                        _yf_crumb_cache["ts"] = time.time()
+                        logger.info(f"Yahoo Finance crumb OK ({endpoint.split('/')[2]})")
+                        return crumb
+            except Exception as e:
+                logger.warning(f"Yahoo crumb {endpoint}: {e}")
         return None
+
+
+def _stooq_daily_btc(ticker, lo, hi, btc_usd, days=6):
+    """Últimos N dias do Stooq convertidos a rácio BTC — fallback para sparklines."""
+    try:
+        d2 = datetime.utcnow()
+        d1 = d2 - timedelta(days=days + 7)
+        url = (f"https://stooq.com/q/d/l/?s={ticker}"
+               f"&d1={d1.strftime('%Y%m%d')}&d2={d2.strftime('%Y%m%d')}&i=d")
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=12)
+        r.raise_for_status()
+        lines = [l.strip() for l in r.text.strip().split("\n") if l.strip()][1:]
+        bars = []
+        for line in lines[-days:]:
+            parts = line.split(",")
+            if len(parts) < 5:
+                continue
+            try:
+                close = float(parts[4])
+                ts = int(datetime.strptime(parts[0], "%Y-%m-%d").timestamp())
+                if lo < close < hi and btc_usd > 0:
+                    bars.append({"t": ts, "v": round(close / btc_usd, 8)})
+            except Exception:
+                continue
+        return bars
+    except Exception as e:
+        logger.warning(f"Stooq daily {ticker}: {e}")
+        return []
 
 
 @app.route("/api/ohlc/<timeframe>")
@@ -1778,140 +1838,51 @@ def api_assets24h():
     except Exception as e:
         logger.warning(f"Assets24h ETH/BTC: {e}")
 
-    # ── Gold/BTC: Yahoo Finance GC=F 1h → dividir por BTC/USD ───────────────
-    try:
-        ry = _yf_session.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1h&range=2d" + _crumb_qs,
-            timeout=10,
-        )
-        ry.raise_for_status()
-        dy = ry.json()
-        chart_res = (dy.get("chart") or {}).get("result") or []
-        if not chart_res:
-            raise ValueError("Yahoo Finance: sem dados GC=F")
-        timestamps_g = chart_res[0]["timestamp"]
-        closes_gold  = chart_res[0]["indicators"]["quote"][0]["close"]
+    # btc_usd para fallback Stooq (conversão directa sem mapa horário)
+    _cached_p = cache_get("prices") or {}
+    _btc_spot = _cached_p.get("btc_usd") or (list(btc_map.values())[-1] if btc_map else 0)
 
-        if btc_map:
-            gold_bars = []
-            for ts, close in zip(timestamps_g, closes_gold):
-                if close is None or close <= 0:
-                    continue
-                btc_usd_val = _nearest_btc(ts)
-                if btc_usd_val:
-                    gold_bars.append({"t": ts, "v": round(close / btc_usd_val, 6)})
-            result["gold"] = gold_bars[-25:]
-            logger.info(f"Assets24h Gold/BTC: {len(result['gold'])} pontos")
-    except Exception as e:
-        logger.warning(f"Assets24h Gold/BTC: {e}")
+    def _yf_hourly(yf_ticker, result_key, lo, hi, decimals,
+                   stooq_ticker, stooq_lo, stooq_hi):
+        """Tenta Yahoo Finance 1h; se falhar usa Stooq diário como fallback."""
+        bars = []
+        try:
+            ry = _yf_session.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_ticker}"
+                f"?interval=1h&range=2d{_crumb_qs}",
+                timeout=10,
+            )
+            ry.raise_for_status()
+            dy = ry.json()
+            cr = (dy.get("chart") or {}).get("result") or []
+            if not cr:
+                raise ValueError(f"Yahoo sem dados {yf_ticker}")
+            tss  = cr[0]["timestamp"]
+            clss = cr[0]["indicators"]["quote"][0]["close"]
+            if btc_map:
+                for ts, cl in zip(tss, clss):
+                    if cl is None or not (lo < cl < hi):
+                        continue
+                    bv = _nearest_btc(ts)
+                    if bv:
+                        bars.append({"t": ts, "v": round(cl / bv, decimals)})
+                bars = bars[-25:]
+                logger.info(f"Assets24h {result_key}: {len(bars)} pts (Yahoo)")
+        except Exception as e:
+            logger.warning(f"Assets24h {result_key} Yahoo: {e}")
 
-    # ── Oil/BTC: Yahoo Finance CL=F 1h → dividir por BTC/USD ─────────────────
-    try:
-        ry = _yf_session.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/CL=F?interval=1h&range=2d" + _crumb_qs,
-            timeout=10,
-        )
-        ry.raise_for_status()
-        dy = ry.json()
-        chart_res = (dy.get("chart") or {}).get("result") or []
-        if not chart_res:
-            raise ValueError("Yahoo Finance: sem dados CL=F")
-        timestamps_y = chart_res[0]["timestamp"]
-        closes_oil   = chart_res[0]["indicators"]["quote"][0]["close"]
+        if len(bars) < 2 and stooq_ticker and _btc_spot > 0:
+            bars = _stooq_daily_btc(stooq_ticker, stooq_lo, stooq_hi, _btc_spot, days=6)
+            if bars:
+                logger.info(f"Assets24h {result_key}: {len(bars)} pts (Stooq fallback)")
 
-        if btc_map:
-            oil_bars = []
-            for ts, close in zip(timestamps_y, closes_oil):
-                if close is None or close <= 0:
-                    continue
-                btc_usd_val = _nearest_btc(ts)
-                if btc_usd_val:
-                    oil_bars.append({"t": ts, "v": round(close / btc_usd_val, 8)})
-            result["oil"] = oil_bars[-25:]
-            logger.info(f"Assets24h Oil/BTC: {len(result['oil'])} pontos")
-    except Exception as e:
-        logger.warning(f"Assets24h Oil/BTC: {e}")
+        result[result_key] = bars
 
-    # ── SP500/BTC: Yahoo Finance ^GSPC 1h → dividir por BTC/USD ─────────────
-    try:
-        ry = _yf_session.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1h&range=2d" + _crumb_qs,
-            timeout=10,
-        )
-        ry.raise_for_status()
-        dy = ry.json()
-        chart_res = (dy.get("chart") or {}).get("result") or []
-        if not chart_res:
-            raise ValueError("Yahoo Finance: sem dados ^GSPC")
-        timestamps_sp = chart_res[0]["timestamp"]
-        closes_sp     = chart_res[0]["indicators"]["quote"][0]["close"]
-
-        if btc_map:
-            sp_bars = []
-            for ts, close in zip(timestamps_sp, closes_sp):
-                if close is None or close <= 0:
-                    continue
-                btc_usd_val = _nearest_btc(ts)
-                if btc_usd_val:
-                    sp_bars.append({"t": ts, "v": round(close / btc_usd_val, 6)})
-            result["sp500"] = sp_bars[-25:]
-            logger.info(f"Assets24h SP500/BTC: {len(result['sp500'])} pontos")
-    except Exception as e:
-        logger.warning(f"Assets24h SP500/BTC: {e}")
-
-    # ── Silver/BTC: Yahoo Finance SI=F 1h → dividir por BTC/USD ─────────────
-    try:
-        ry = _yf_session.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/SI=F?interval=1h&range=2d" + _crumb_qs,
-            timeout=10,
-        )
-        ry.raise_for_status()
-        dy = ry.json()
-        chart_res = (dy.get("chart") or {}).get("result") or []
-        if not chart_res:
-            raise ValueError("Yahoo Finance: sem dados SI=F")
-        timestamps_ag = chart_res[0]["timestamp"]
-        closes_ag     = chart_res[0]["indicators"]["quote"][0]["close"]
-
-        if btc_map:
-            ag_bars = []
-            for ts, close in zip(timestamps_ag, closes_ag):
-                if close is None or close <= 0:
-                    continue
-                btc_usd_val = _nearest_btc(ts)
-                if btc_usd_val:
-                    ag_bars.append({"t": ts, "v": round(close / btc_usd_val, 8)})
-            result["silver"] = ag_bars[-25:]
-            logger.info(f"Assets24h Silver/BTC: {len(result['silver'])} pontos")
-    except Exception as e:
-        logger.warning(f"Assets24h Silver/BTC: {e}")
-
-    # ── NASDAQ/BTC: Yahoo Finance ^IXIC 1h → dividir por BTC/USD ─────────────
-    try:
-        ry = _yf_session.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC?interval=1h&range=2d" + _crumb_qs,
-            timeout=10,
-        )
-        ry.raise_for_status()
-        dy = ry.json()
-        chart_res = (dy.get("chart") or {}).get("result") or []
-        if not chart_res:
-            raise ValueError("Yahoo Finance: sem dados ^IXIC")
-        timestamps_nq = chart_res[0]["timestamp"]
-        closes_nq     = chart_res[0]["indicators"]["quote"][0]["close"]
-
-        if btc_map:
-            nq_bars = []
-            for ts, close in zip(timestamps_nq, closes_nq):
-                if close is None or close <= 0:
-                    continue
-                btc_usd_val = _nearest_btc(ts)
-                if btc_usd_val:
-                    nq_bars.append({"t": ts, "v": round(close / btc_usd_val, 6)})
-            result["nasdaq"] = nq_bars[-25:]
-            logger.info(f"Assets24h NASDAQ/BTC: {len(result['nasdaq'])} pontos")
-    except Exception as e:
-        logger.warning(f"Assets24h NASDAQ/BTC: {e}")
+    _yf_hourly("GC=F",   "gold",   1500, 5000, 6, "gc.f",  1500, 5000)
+    _yf_hourly("CL=F",   "oil",    30,   200,  8, "cl.f",  30,   200)
+    _yf_hourly("%5EGSPC","sp500",  3000, 7000, 6, "^spx",  3000, 7000)
+    _yf_hourly("SI=F",   "silver", 5,    200,  8, "si.f",  5,    200)
+    _yf_hourly("%5EIXIC","nasdaq", 8000, 30000,6, "^ndq",  8000, 30000)
 
     _ohlc_cache["assets24h"] = {"data": result, "ts": time.time()}
     return jsonify(result), 200
