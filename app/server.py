@@ -1371,6 +1371,22 @@ from collections import defaultdict as _dd
 _ohlc_cache = {}
 OHLC_TTL = {"weekly": 3600, "monthly": 7200, "yearly": 86400}
 
+
+def _binance_klines(interval, limit, start_ms=None):
+    """Binance klines: devolve lista de (ts_s, open, high, low, close, vol)."""
+    url = (f"https://api.binance.com/api/v3/klines"
+           f"?symbol=BTCUSDT&interval={interval}&limit={limit}")
+    if start_ms:
+        url += f"&startTime={start_ms}"
+    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+    r.raise_for_status()
+    result = []
+    for k in r.json():
+        cl = float(k[4])
+        if cl > 0:
+            result.append((int(k[0]) // 1000, float(k[1]), float(k[2]), float(k[3]), cl, float(k[5])))
+    return result
+
 # ── Yahoo Finance crumb (obrigatório desde 2025) ──────────────────────────────
 _yf_crumb_cache: dict = {"crumb": None, "ts": 0.0}
 _yf_session = requests.Session()
@@ -1633,6 +1649,47 @@ def api_ohlc(timeframe):
             errors.append(f"Bybit: {e}")
             bars = None
 
+    # ── 4. BINANCE — último fallback ──────────────────────────────────────────
+    if bars is None:
+        try:
+            bn_interval = {"weekly": "1w", "monthly": "1M", "yearly": "1M"}[timeframe]
+            bn_limit    = {"weekly": 250,  "monthly": 180,  "yearly": 180}[timeframe]
+            raw_bn = _binance_klines(bn_interval, bn_limit)
+            if not raw_bn:
+                raise ValueError("Binance: 0 barras")
+
+            def lbl_bn(ts, tf):
+                d2 = datetime.utcfromtimestamp(ts)
+                if tf == "weekly":   return d2.strftime("%d %b %y")
+                if tf == "monthly":  return d2.strftime("%b %Y")
+                return str(d2.year)
+
+            if timeframe in ("weekly", "monthly"):
+                bars = [{"t": b[0], "o": round(b[1], 2), "h": round(b[2], 2),
+                         "l": round(b[3], 2), "c": round(b[4], 2), "v": round(b[5], 2),
+                         "avg": round((b[1] + b[4]) / 2, 2),
+                         "label": lbl_bn(b[0], timeframe)} for b in raw_bn]
+            else:
+                yd3 = _dd(list)
+                for b in raw_bn:
+                    yd3[datetime.utcfromtimestamp(b[0]).year].append(b)
+                bars = []
+                for year in sorted(yd3.keys()):
+                    yc = yd3[year]
+                    bars.append({"t": yc[0][0], "o": round(yc[0][1], 2),
+                                 "h": round(max(b[2] for b in yc), 2),
+                                 "l": round(min(b[3] for b in yc), 2),
+                                 "c": round(yc[-1][4], 2),
+                                 "v": round(sum(b[5] for b in yc), 2),
+                                 "avg": round(sum(b[4] for b in yc) / len(yc), 2),
+                                 "label": str(year)})
+            if not bars:
+                raise ValueError("0 barras após agrupamento")
+            logger.info(f"OHLC {timeframe}: {len(bars)} barras via Binance")
+        except Exception as e:
+            errors.append(f"Binance: {e}")
+            bars = None
+
     if not bars:
         logger.error(f"OHLC {timeframe} todas as fontes falharam: {errors}")
         return jsonify(
@@ -1713,8 +1770,20 @@ def api_cycle_stats():
                 raise ValueError("Bybit: 0 candles válidos")
             logger.info(f"CycleStats: {len(candles)} dias via Bybit")
         except Exception as e2:
-            logger.error(f"CycleStats Bybit: {e2}")
-            return jsonify({"error": str(e2)}), 502
+            logger.warning(f"CycleStats Bybit: {e2}")
+            candles = None
+
+    # Fallback: Binance daily
+    if candles is None:
+        try:
+            raw_bn = _binance_klines("1d", 1000, start_ms=HALVING_4_MS)
+            candles = [(b[0], b[2], b[3]) for b in raw_bn if b[0] >= halving_s]
+            if not candles:
+                raise ValueError("Binance: 0 candles")
+            logger.info(f"CycleStats: {len(candles)} dias via Binance")
+        except Exception as e3:
+            logger.error(f"CycleStats Binance: {e3}")
+            return jsonify({"error": str(e3)}), 502
 
     if not candles:
         return jsonify({"error": "sem dados"}), 502
@@ -1790,7 +1859,18 @@ def api_ohlc_cycle_daily():
             bars = [{"t": int(k[0]) // 1000, "c": round(float(k[4]), 2), "day": i} for i, k in enumerate(klines)]
             logger.info(f"cycle-daily: {len(bars)} dias via Bybit")
         except Exception as e:
-            logger.error(f"cycle-daily Bybit: {e}")
+            logger.warning(f"cycle-daily Bybit: {e}")
+
+    if not bars:
+        try:
+            raw_bn = _binance_klines("1d", 1000, start_ms=HALVING_4_MS)
+            bars = [{"t": b[0], "c": round(b[4], 2), "day": i}
+                    for i, b in enumerate(raw_bn) if b[0] >= HALVING_4_MS // 1000]
+            if not bars:
+                raise ValueError("0 bars")
+            logger.info(f"cycle-daily: {len(bars)} dias via Binance")
+        except Exception as e:
+            logger.error(f"cycle-daily Binance: {e}")
             return jsonify({"error": str(e)}), 502
 
     halving_price = bars[0]["c"] if bars else 63800
