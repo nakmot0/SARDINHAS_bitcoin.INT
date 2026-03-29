@@ -963,8 +963,8 @@
     </div>
     <div class="hero-stats">
       <div class="stat-item">
-        <div class="stat-val" id="btc-rank">#--</div>
-        <div class="stat-lbl" data-i18n="rank-label">Global Marketcap Rank</div>
+        <div class="stat-val" id="btc-mcap">$--</div>
+        <div class="stat-lbl" data-i18n="mcap-label">Market Cap</div>
       </div>
       <div class="stat-item">
         <div class="stat-val" id="btc-dominance">--%</div>
@@ -2204,8 +2204,13 @@
       if (d.btc_change_24h !== null && d.btc_change_24h !== undefined)
         setBadge(document.getElementById('btc-badge'), d.btc_change_24h);
 
-      if (d.btc_rank)
-        document.getElementById('btc-rank').textContent = '#' + d.btc_rank;
+      if (d.btc_usd) {
+        const mc = d.btc_usd * 19870000;
+        const mcEl = document.getElementById('btc-mcap');
+        if (mcEl) mcEl.textContent = mc >= 1e12
+          ? '$' + (mc / 1e12).toFixed(2) + 'T'
+          : '$' + (mc / 1e9).toFixed(0) + 'B';
+      }
 
       if (d.dominance)
         document.getElementById('btc-dominance').textContent = d.dominance.toFixed(1) + '%';
@@ -2531,16 +2536,31 @@
 
   // ── MAYER MULTIPLE ────────────────────────────────────────────────────────
   async function loadCycleStats() {
+    const fmtK = v => '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'K' : v.toFixed(0));
+    const hiEl = document.getElementById('cycle-high-val');
+    const loEl = document.getElementById('cycle-low-val');
+
+    // Tentar API (dados exactos com high/low de velas)
     try {
       const r = await fetch('/api/cycle-stats?t=' + Date.now());
       const d = await r.json();
-      if (!d.cycle_high) return;
-      const fmtK = v => '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'K' : v.toFixed(0));
-      const hiEl = document.getElementById('cycle-high-val');
-      const loEl = document.getElementById('cycle-low-val');
-      if (hiEl) hiEl.textContent = '▲ ' + fmtK(d.cycle_high) + '  ' + d.cycle_high_date;
-      if (loEl) loEl.textContent = '▼ ' + fmtK(d.cycle_low)  + '  ' + d.cycle_low_date;
-    } catch(e) { console.warn('CycleStats:', e); }
+      if (d.cycle_high && d.cycle_low) {
+        if (hiEl) hiEl.textContent = '▲ ' + fmtK(d.cycle_high) + '  ' + d.cycle_high_date;
+        if (loEl) loEl.textContent = '▼ ' + fmtK(d.cycle_low)  + '  ' + d.cycle_low_date;
+        return;
+      }
+    } catch(e) { console.warn('CycleStats API:', e); }
+
+    // Fallback: calcular a partir dos closes diários já carregados
+    if (_cycleDailyBars && _cycleDailyBars.length > 1) {
+      const closes = _cycleDailyBars.map(b => b.c).filter(c => c > 0);
+      if (closes.length > 0) {
+        const hi = Math.max(...closes);
+        const lo = Math.min(...closes);
+        if (hiEl) hiEl.textContent = '▲ ' + fmtK(hi);
+        if (loEl) loEl.textContent = '▼ ' + fmtK(lo);
+      }
+    }
   }
 
   // ── TEMA CLARO / ESCURO ───────────────────────────────────────────────────
@@ -2581,7 +2601,7 @@
       'live': 'Live',
       'updated': 'Last update',
       'hero-label': 'Bitcoin · USD',
-      'rank-label': 'Global Marketcap Rank',
+      'mcap-label': 'Market Cap',
       'dominance-label': 'BTC Dominance',
       'high-low-label': 'High / Low 24h',
       'gold-title': 'Gold in BTC',
@@ -2632,7 +2652,7 @@
       'live': 'Em tempo real',
       'updated': 'Última atualização',
       'hero-label': 'Bitcoin · USD',
-      'rank-label': 'Global Marketcap Rank',
+      'mcap-label': 'Market Cap',
       'dominance-label': 'Dominância BTC',
       'high-low-label': 'High / Low 24h',
       'gold-title': 'Ouro em BTC',
