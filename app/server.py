@@ -226,9 +226,10 @@ def _get_mc(yf_ticker, stooq_ticker, shares, fx):
             lines = [l.strip() for l in r2.text.strip().split("\n") if l.strip()][1:]
             for line in reversed(lines):
                 cols = line.split(",")
-                if len(cols) >= 5:
+                # f=sd2t2ohlcv → [symbol,date,time,open,high,low,close,volume]
+                if len(cols) >= 7:
                     try:
-                        price = float(cols[4])  # close
+                        price = float(cols[6])  # close (index 6)
                         if price > 0:
                             logger.info(f"Rank MC {yf_ticker} via Stooq: ${price:.2f}")
                             return price * fx * shares
@@ -2064,6 +2065,21 @@ def api_assets24h():
             bars = _stooq_daily_btc(stooq_ticker, stooq_lo, stooq_hi, _btc_spot, days=6)
             if bars:
                 logger.info(f"Assets24h {result_key}: {len(bars)} pts (Stooq)")
+
+        # 4) yfinance daily — fallback final: 5 dias em vez de 1h
+        if len(bars) < 2 and _btc_spot > 0:
+            try:
+                raw_d = _yf_history_bars(yf_ticker, "5d", "1d")
+                for b in raw_d:
+                    cl = b[4]
+                    if not (lo < cl < hi):
+                        continue
+                    bv = _nearest_btc(b[0]) or _btc_spot
+                    bars.append({"t": b[0], "v": round(cl / bv, decimals)})
+                if bars:
+                    logger.info(f"Assets24h {result_key}: {len(bars)} pts (yfinance daily)")
+            except Exception as e:
+                logger.warning(f"Assets24h {result_key} yfinance daily: {e}")
 
         result[result_key] = bars
 
