@@ -1080,16 +1080,15 @@
       <div class="chart-panel active" id="panel-cycles">
         <div class="chart-header">
           <div class="chart-ma-legend">
-            <div class="ma-item"><div class="ma-dot" style="background:rgba(255,255,255,0.18)"></div>2012</div>
-            <div class="ma-item"><div class="ma-dot" style="background:rgba(255,255,255,0.28)"></div>2016</div>
-            <div class="ma-item"><div class="ma-dot" style="background:rgba(255,255,255,0.42)"></div>2020</div>
-            <div class="ma-item"><div class="ma-dot" style="background:#f7931a"></div>2024</div>
+            <div class="ma-item"><div class="ma-dot" style="background:rgba(247,147,26,0.22)"></div>2012</div>
+            <div class="ma-item"><div class="ma-dot" style="background:rgba(247,147,26,0.42)"></div>2016</div>
+            <div class="ma-item"><div class="ma-dot" style="background:rgba(247,147,26,0.68)"></div>2020</div>
+            <div class="ma-item"><div class="ma-dot" style="background:#ffffff"></div>2024</div>
           </div>
           <span class="chart-regime-badge neutral" id="badge-cycles">--</span>
         </div>
-        <canvas id="cycles-chart" height="220"></canvas>
-        <!-- Barra de progresso entre os dois gráficos -->
-        <div class="cycle-bar-inline" style="margin:8px 0 6px">
+        <canvas id="cycles-chart" height="240"></canvas>
+        <div class="cycle-bar-inline" style="margin:10px 0 4px">
           <div class="cycle-bar-header">
             <span class="cycle-bar-label" data-i18n="cycle-label">Ciclo Pós-Halving · Abril 2024</span>
             <span class="cycle-bar-info" id="halving-days">-- days of cycle</span>
@@ -1103,12 +1102,6 @@
             <span data-i18n="halving-next">Próximo: ~Abr 2028</span>
           </div>
         </div>
-        <!-- Gráfico combo: drawdown (área) + % acumulada (linha) -->
-        <div class="combo-legend">
-          <span class="combo-legend-item"><span class="combo-dot" style="background:rgba(220,60,60,0.7)"></span><span data-i18n="combo-drawdown">Drawdown ATH</span></span>
-          <span class="combo-legend-item"><span class="combo-dot" style="background:#f7931a;opacity:0.7"></span><span data-i18n="combo-cumulative">% acum. halving</span></span>
-        </div>
-        <canvas id="cycles-combo-chart" height="130"></canvas>
       </div>
 
       <!-- Tab 2: Semanal -->
@@ -1475,11 +1468,11 @@
     }
   };
 
-  // Plugin: crosshair sincronizado entre cycles-chart e cycles-combo-chart
+  // Plugin: crosshair no ciclo
   const _crosshairPlugin = {
     id: 'syncCrosshair',
     afterDraw(chart) {
-      if (!['cycles-chart','cycles-combo-chart'].includes(chart.canvas.id)) return;
+      if (chart.canvas.id !== 'cycles-chart') return;
       if (_cycleHoverDay == null) return;
       const { ctx, scales: { x }, chartArea: { top, bottom } } = chart;
       const xPos = x.getPixelForValue(_cycleHoverDay);
@@ -1521,27 +1514,27 @@
       const yPos = y.getPixelForValue(yVal);
       ctx.save();
       // linha tracejada até base
-      ctx.strokeStyle = 'rgba(247,147,26,0.35)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
       ctx.lineWidth = 1; ctx.setLineDash([4,4]);
       ctx.beginPath(); ctx.moveTo(xPos, yPos); ctx.lineTo(xPos, y.bottom); ctx.stroke();
       ctx.setLineDash([]);
-      // glow
-      ctx.shadowBlur = 16; ctx.shadowColor = '#f7931a';
+      // glow branco
+      ctx.shadowBlur = 18; ctx.shadowColor = 'rgba(255,255,255,0.7)';
       // ponto central
       ctx.beginPath(); ctx.arc(xPos, yPos, 4, 0, Math.PI*2);
-      ctx.fillStyle = '#f7931a'; ctx.fill();
+      ctx.fillStyle = '#ffffff'; ctx.fill();
       ctx.shadowBlur = 0;
-      // anel exterior (animado via CSS não é possível no canvas, usamos dois anéis estáticos)
-      ctx.strokeStyle = 'rgba(247,147,26,0.45)'; ctx.lineWidth = 2;
+      // anéis
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(xPos, yPos, 9, 0, Math.PI*2); ctx.stroke();
-      ctx.strokeStyle = 'rgba(247,147,26,0.18)'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(xPos, yPos, 15, 0, Math.PI*2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(xPos, yPos, 16, 0, Math.PI*2); ctx.stroke();
       // labels
       ctx.font = '500 11px "Roboto Condensed"';
-      ctx.fillStyle = '#f7931a'; ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center';
       ctx.fillText(yVal.toFixed(2) + 'x', xPos, yPos - 16);
       ctx.font = '300 9px "Roboto Condensed"';
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
       ctx.fillText('D' + Math.floor(cd), xPos, yPos - 27);
       ctx.restore();
     }
@@ -1633,9 +1626,9 @@
     // Gradient fill para 2024
     const canvas = document.getElementById('cycles-chart');
     const ctx = canvas.getContext('2d');
-    const grad = ctx.createLinearGradient(0, 0, 0, canvas.offsetHeight || 220);
-    grad.addColorStop(0, 'rgba(247,147,26,0.12)');
-    grad.addColorStop(1, 'rgba(247,147,26,0)');
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.offsetHeight || 240);
+    grad.addColorStop(0, 'rgba(255,255,255,0.10)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
 
     const C = chartColors();
     if (_chartInstances['cycles']) { _chartInstances['cycles'].destroy(); }
@@ -1644,10 +1637,10 @@
       data: {
         labels,
         datasets: [
-          { label:'2012', data:toPoints(cycle2012), borderColor:'rgba(255,255,255,0.10)', backgroundColor:'transparent', borderWidth:1,   pointRadius:0, tension:0.35, spanGaps:true },
-          { label:'2016', data:toPoints(cycle2016), borderColor:'rgba(255,255,255,0.18)', backgroundColor:'transparent', borderWidth:1,   pointRadius:0, tension:0.35, spanGaps:true },
-          { label:'2020', data:toPoints(cycle2020), borderColor:'rgba(255,255,255,0.32)', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.35, spanGaps:true },
-          { label:'2024', data:pts2024,              borderColor:'#f7931a',               backgroundColor:grad,          borderWidth:2.5, pointRadius:0, tension:0.35, spanGaps:true, fill:true },
+          { label:'2012', data:toPoints(cycle2012), borderColor:'rgba(247,147,26,0.18)', backgroundColor:'transparent',           borderWidth:1,   pointRadius:0, tension:0.35, spanGaps:true },
+          { label:'2016', data:toPoints(cycle2016), borderColor:'rgba(247,147,26,0.38)', backgroundColor:'transparent',           borderWidth:1,   pointRadius:0, tension:0.35, spanGaps:true },
+          { label:'2020', data:toPoints(cycle2020), borderColor:'rgba(247,147,26,0.62)', backgroundColor:'rgba(247,147,26,0.03)', borderWidth:1.5, pointRadius:0, tension:0.35, spanGaps:true, fill:true },
+          { label:'2024', data:pts2024,              borderColor:'rgba(255,255,255,0.88)', backgroundColor:grad,                  borderWidth:2,   pointRadius:0, tension:0.35, spanGaps:true, fill:true },
         ]
       },
       options: {
@@ -1656,8 +1649,6 @@
         onHover: (_, __, chart) => {
           const items = chart.getActiveElements();
           _cycleHoverDay = items.length ? chart.data.labels[items[0].index] : null;
-          const combo = _chartInstances['cycles-combo'];
-          if (combo) combo.draw();
         },
         plugins: {
           legend: { display:false },
@@ -1681,88 +1672,8 @@
     _animateDrawOn('cycles', [0, 200, 400, 600]);
   }
 
-  function _buildCyclesCombo(bars, halvingPrice) {
-    if (!bars.length) return;
-    const cd = getCycleDecimalDay();
-    // Calcular drawdown e % acumulada
-    let ath = halvingPrice;
-    const ddPts = [], pctPts = [], dayLabels = [];
-    bars.forEach(b => {
-      if (b.day > cd) return;
-      if (b.c > ath) ath = b.c;
-      ddPts.push(parseFloat(((b.c - ath) / ath * 100).toFixed(2)));
-      pctPts.push(parseFloat(((b.c / halvingPrice - 1) * 100).toFixed(2)));
-      dayLabels.push(b.day);
-    });
-    if (!dayLabels.length) return;
-
-    const C = chartColors();
-    const ctx2 = document.getElementById('cycles-combo-chart').getContext('2d');
-    const gradDD = ctx2.createLinearGradient(0, 0, 0, 130);
-    gradDD.addColorStop(0, 'rgba(220,60,60,0)');
-    gradDD.addColorStop(1, 'rgba(220,60,60,0.18)');
-
-    if (_chartInstances['cycles-combo']) { _chartInstances['cycles-combo'].destroy(); }
-    _chartInstances['cycles-combo'] = new Chart(ctx2, {
-      type: 'line',
-      data: {
-        labels: dayLabels,
-        datasets: [
-          {
-            label: 'Drawdown ATH',
-            data: ddPts,
-            borderColor: 'rgba(220,60,60,0.7)',
-            backgroundColor: gradDD,
-            borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, spanGaps: true,
-            yAxisID: 'yDD',
-          },
-          {
-            label: '% acum.',
-            data: pctPts,
-            borderColor: 'rgba(247,147,26,0.6)',
-            backgroundColor: 'transparent',
-            borderWidth: 1.5, borderDash: [4,3], pointRadius: 0, tension: 0.3, fill: false, spanGaps: true,
-            yAxisID: 'yPct',
-          }
-        ]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false, animation: false,
-        interaction: { mode:'index', intersect:false },
-        onHover: (_, __, chart) => {
-          const items = chart.getActiveElements();
-          _cycleHoverDay = items.length ? chart.data.labels[items[0].index] : null;
-          const main = _chartInstances['cycles'];
-          if (main) main.draw();
-        },
-        plugins: {
-          legend: { display:false },
-          tooltip: {
-            backgroundColor:'#111', borderColor:'rgba(255,255,255,0.10)', borderWidth:1,
-            titleColor:'rgba(255,255,255,0.5)', bodyColor:'#f0f0f0',
-            titleFont:{ family:'Roboto Condensed', size:10, weight:300 },
-            bodyFont:{ family:'Roboto Condensed', size:12, weight:300 },
-            callbacks: {
-              title: items => `Dia ${items[0].label} pós-halving`,
-              label: item => {
-                if (item.datasetIndex === 0) return ` Drawdown: ${item.raw}%`;
-                return ` % acum.: ${item.raw > 0 ? '+' : ''}${item.raw}%`;
-              }
-            }
-          }
-        },
-        scales: {
-          x: { type:'linear', min:0, max:Math.max(...dayLabels, 30), grid:{ color:C.grid }, ticks:{ color:C.tick, font:{family:'Roboto Condensed',size:9}, maxTicksLimit:8, callback:v=>`${v}d` } },
-          yDD:  { position:'left',  grid:{ color:C.grid }, ticks:{ color:'rgba(220,60,60,0.7)', font:{family:'Roboto Condensed',size:9}, callback:v=>v+'%' } },
-          yPct: { position:'right', grid:{ drawOnChartArea:false }, ticks:{ color:'rgba(247,147,26,0.6)', font:{family:'Roboto Condensed',size:9}, callback:v=>(v>0?'+':'')+v+'%' } }
-        }
-      }
-    });
-    _animateDrawOn('cycles-combo', [0, 150]);
-  }
-
   async function loadCycleCharts() {
-    const daysSince = calcHalving();
+    calcHalving();
     try {
       const r = await fetch('/api/ohlc/cycle-daily?t=' + Date.now());
       const d = await r.json();
@@ -1772,7 +1683,6 @@
       }
     } catch(e) { console.warn('cycle-daily:', e); }
     _buildCyclesMain(_cycleDailyBars, _halvingPrice);
-    _buildCyclesCombo(_cycleDailyBars, _halvingPrice);
   }
 
   // Atualiza o ciclo em directo com o preço BTC actual
@@ -1781,7 +1691,6 @@
     const decimalDay = getCycleDecimalDay();
     const multiplier = parseFloat((btcUsd / _halvingPrice).toFixed(4));
 
-    // Atualizar dataset 2024 no gráfico principal
     const chart = _chartInstances['cycles'];
     if (chart) {
       const ds = chart.data.datasets[3];
@@ -1796,27 +1705,6 @@
       chart.update('none');
     }
 
-    // Atualizar combo: adicionar/atualizar último ponto de % acumulada
-    const combo = _chartInstances['cycles-combo'];
-    if (combo && _cycleDailyBars.length) {
-      const pctDs = combo.data.datasets[1];
-      const ddDs  = combo.data.datasets[0];
-      const dayLbl = Math.floor(decimalDay);
-      const lastIdx = combo.data.labels.length - 1;
-      const pct = parseFloat(((btcUsd / _halvingPrice - 1) * 100).toFixed(2));
-      if (combo.data.labels[lastIdx] === dayLbl) {
-        pctDs.data[lastIdx] = pct;
-      } else {
-        combo.data.labels.push(dayLbl);
-        pctDs.data.push(pct);
-        // drawdown: usar último ATH
-        const ath = Math.max(..._cycleDailyBars.map(b=>b.c), btcUsd);
-        ddDs.data.push(parseFloat(((btcUsd - ath) / ath * 100).toFixed(2)));
-      }
-      combo.update('none');
-    }
-
-    // Badge
     const badge = document.getElementById('badge-cycles');
     if (badge) {
       const pctChange = ((multiplier - 1) * 100).toFixed(1);
@@ -2667,12 +2555,7 @@
       _chartInstances['cycles'].destroy();
       delete _chartInstances['cycles'];
     }
-    if (_chartInstances['cycles-combo']) {
-      _chartInstances['cycles-combo'].destroy();
-      delete _chartInstances['cycles-combo'];
-    }
     _buildCyclesMain(_cycleDailyBars, _halvingPrice);
-    _buildCyclesCombo(_cycleDailyBars, _halvingPrice);
     loadPrices();
     // 2. Sparklines
     loadHeroSparkline();
