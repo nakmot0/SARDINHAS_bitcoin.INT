@@ -1494,14 +1494,15 @@
       const { ctx, scales: { x, y }, data } = chart;
       const cd = getCycleDecimalDay();
       _cycleCurrentDay = cd;
+      const cdM = cd / 30;
       const ds2024 = data.datasets[3].data;
       const lbls = data.labels;
       let yVal = null;
       for (let i = 0; i < lbls.length - 1; i++) {
-        if (cd >= lbls[i] && cd <= lbls[i+1]) {
+        if (cdM >= lbls[i] && cdM <= lbls[i+1]) {
           const v0 = ds2024[i], v1 = ds2024[i+1];
           if (v0 != null && v1 != null)
-            yVal = v0 + (cd - lbls[i]) / (lbls[i+1] - lbls[i]) * (v1 - v0);
+            yVal = v0 + (cdM - lbls[i]) / (lbls[i+1] - lbls[i]) * (v1 - v0);
           break;
         }
       }
@@ -1510,32 +1511,28 @@
           if (ds2024[i] != null) { yVal = ds2024[i]; break; }
       }
       if (yVal == null) return;
-      const xPos = x.getPixelForValue(cd);
+      const xPos = x.getPixelForValue(cdM);
       const yPos = y.getPixelForValue(yVal);
+      const priceLabel = yVal >= 1000 ? '$' + (yVal/1000).toFixed(0) + 'K' : '$' + yVal.toFixed(0);
       ctx.save();
-      // linha tracejada até base
       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
       ctx.lineWidth = 1; ctx.setLineDash([4,4]);
       ctx.beginPath(); ctx.moveTo(xPos, yPos); ctx.lineTo(xPos, y.bottom); ctx.stroke();
       ctx.setLineDash([]);
-      // glow branco
       ctx.shadowBlur = 18; ctx.shadowColor = 'rgba(255,255,255,0.7)';
-      // ponto central
       ctx.beginPath(); ctx.arc(xPos, yPos, 4, 0, Math.PI*2);
       ctx.fillStyle = '#ffffff'; ctx.fill();
       ctx.shadowBlur = 0;
-      // anéis
       ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(xPos, yPos, 9, 0, Math.PI*2); ctx.stroke();
       ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(xPos, yPos, 16, 0, Math.PI*2); ctx.stroke();
-      // labels
-      ctx.font = '500 11px "Roboto Condensed"';
+      ctx.font = '600 11px "Roboto Condensed"';
       ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center';
-      ctx.fillText(yVal.toFixed(2) + 'x', xPos, yPos - 16);
+      ctx.fillText(priceLabel, xPos, yPos - 18);
       ctx.font = '300 9px "Roboto Condensed"';
       ctx.fillStyle = 'rgba(255,255,255,0.45)';
-      ctx.fillText('D' + Math.floor(cd), xPos, yPos - 27);
+      ctx.fillText('M' + Math.floor(cdM), xPos, yPos - 30);
       ctx.restore();
     }
   };
@@ -1570,109 +1567,81 @@
   }
 
   function _buildCyclesMain(bars, halvingPrice) {
-    const cycle2012 = [
-      [0,1],[30,1.3],[60,1.8],[90,2.5],[120,3.8],[150,6],[180,10],[210,18],[240,35],
-      [270,60],[300,82],[330,95],[360,96],[390,85],[420,70],[450,55],[480,42],[510,32],
-      [540,25],[570,20],[600,16],[700,12],[800,10],[900,9],[1000,8],[1100,8],[1200,9]
-    ];
-    const cycle2016 = [
-      [0,1],[60,1.1],[120,1.3],[180,1.6],[240,2.2],[300,4],[360,8],[420,16],[480,25],
-      [525,30.5],[540,28],[570,22],[600,18],[650,14],[700,11],[800,8],[900,7],[1000,6.5],[1100,7],[1200,8],[1300,9]
-    ];
-    const cycle2020 = [
-      [0,1],[60,1.2],[120,1.5],[180,2],[240,3],[300,4.5],[360,6.5],[420,7.8],
-      [480,7.2],[540,7.8],[550,7.84],[570,7],[600,5.5],[650,4],[700,3],[800,2.2],[900,1.8],[1000,1.6],[1100,1.5],[1200,1.6],[1300,1.8]
-    ];
-
-    const maxDays = 1461;
-    const labels = Array.from({length: Math.ceil(maxDays/30)+1}, (_,i) => i*30);
-
-    function interp(data, day) {
-      if (day <= data[0][0]) return data[0][1];
-      for (let i = 0; i < data.length-1; i++) {
-        if (day >= data[i][0] && day <= data[i+1][0]) {
-          return data[i][1] + (day-data[i][0])/(data[i+1][0]-data[i][0])*(data[i+1][1]-data[i][1]);
-        }
+    const HP = { '2012': 12.35, '2016': 648, '2020': 8787, '2024': halvingPrice || 63800 };
+    const raw2012 = [[0,1],[1,1.3],[2,1.8],[3,2.5],[4,3.8],[5,6],[6,10],[7,18],[8,35],[9,60],[10,82],[11,95],[12,96],[13,85],[14,70],[15,55],[16,42],[17,32],[18,25],[19,20],[20,16],[23,12],[27,10],[30,9],[33,8],[36,8],[40,9]];
+    const raw2016 = [[0,1],[2,1.1],[4,1.3],[6,1.6],[8,2.2],[10,4],[12,8],[14,16],[16,25],[17.5,30.5],[18,28],[19,22],[20,18],[22,14],[23,11],[27,8],[30,7],[33,6.5],[36,7],[40,8],[43,9]];
+    const raw2020 = [[0,1],[2,1.2],[4,1.5],[6,2],[8,3],[10,4.5],[12,6.5],[14,7.8],[16,7.2],[18,7.8],[18.3,7.84],[19,7],[20,5.5],[22,4],[23,3],[27,2.2],[30,1.8],[33,1.6],[36,1.5],[40,1.6],[43,1.8]];
+    const maxMonths = 48;
+    const labels = Array.from({length: maxMonths + 1}, (_, i) => i);
+    function interp(data, m) {
+      if (m <= data[0][0]) return data[0][1];
+      for (let i = 0; i < data.length - 1; i++) {
+        if (m >= data[i][0] && m <= data[i+1][0])
+          return data[i][1] + (m - data[i][0]) / (data[i+1][0] - data[i][0]) * (data[i+1][1] - data[i][1]);
       }
-      return data[data.length-1][1];
+      return data[data.length - 1][1];
     }
-    const toPoints = d => labels.map(day => parseFloat(interp(d, day).toFixed(3)));
-
-    // Dataset 2024 a partir dos dados reais da API
+    const toPx = (raw, hp) => labels.map(m => parseFloat((interp(raw, m) * hp).toFixed(2)));
     const cd = getCycleDecimalDay();
+    const cdM = cd / 30;
     let pts2024 = new Array(labels.length).fill(null);
     if (bars.length > 0) {
       bars.forEach(b => {
-        const day = b.day;
-        const mult = parseFloat((b.c / halvingPrice).toFixed(4));
-        // interpolar no eixo de labels
-        for (let i = 0; i < labels.length-1; i++) {
-          if (day >= labels[i] && day < labels[i+1]) {
-            pts2024[i] = mult; break;
-          }
-        }
-        if (day >= labels[labels.length-1]) pts2024[labels.length-1] = mult;
+        const idx = Math.round(b.day / 30);
+        if (idx >= 0 && idx <= maxMonths && b.c > 0) pts2024[idx] = b.c;
       });
-      // cortar pontos futuros
-      for (let i = 0; i < labels.length; i++) {
-        if (labels[i] > cd) pts2024[i] = null;
-      }
+      for (let i = 0; i < labels.length; i++) { if (labels[i] > cdM + 0.5) pts2024[i] = null; }
     } else {
-      // fallback hardcoded se API falhar
-      const fallback = [[0,1],[30,1.05],[60,0.95],[90,0.93],[120,0.97],[150,0.90],[180,1.10],[210,1.40],[240,1.60],[270,1.40],[300,1.35],[330,1.25],[360,1.40],[390,1.55]];
-      pts2024 = labels.map(day => day <= cd ? parseFloat(interp(fallback, day).toFixed(3)) : null);
+      const fb = [[0,1],[1,1.05],[2,0.95],[3,0.93],[4,0.97],[5,0.90],[6,1.10],[7,1.40],[8,1.60],[9,1.40],[10,1.35],[11,1.25],[12,1.40],[13,1.55]];
+      pts2024 = labels.map(m => m <= cdM ? parseFloat((interp(fb, m) * HP['2024']).toFixed(2)) : null);
     }
-
-    // Gradient fill para 2024
     const canvas = document.getElementById('cycles-chart');
     const ctx = canvas.getContext('2d');
-    const grad = ctx.createLinearGradient(0, 0, 0, canvas.offsetHeight || 240);
-    grad.addColorStop(0, 'rgba(255,255,255,0.10)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-
+    const h = canvas.offsetHeight || 260;
+    function mkGrad(r, g, b, a0) {
+      const gd = ctx.createLinearGradient(0, 0, 0, h);
+      gd.addColorStop(0,   `rgba(${r},${g},${b},${a0})`);
+      gd.addColorStop(0.6, `rgba(${r},${g},${b},${(a0*0.3).toFixed(3)})`);
+      gd.addColorStop(1,   `rgba(${r},${g},${b},0)`);
+      return gd;
+    }
     const C = chartColors();
-    if (_chartInstances['cycles']) { _chartInstances['cycles'].destroy(); }
+    if (_chartInstances['cycles']) _chartInstances['cycles'].destroy();
     _chartInstances['cycles'] = new Chart(ctx, {
       type: 'line',
-      data: {
-        labels,
-        datasets: [
-          { label:'2012', data:toPoints(cycle2012), borderColor:'rgba(247,147,26,0.18)', backgroundColor:'transparent',           borderWidth:1,   pointRadius:0, tension:0.35, spanGaps:true },
-          { label:'2016', data:toPoints(cycle2016), borderColor:'rgba(247,147,26,0.38)', backgroundColor:'transparent',           borderWidth:1,   pointRadius:0, tension:0.35, spanGaps:true },
-          { label:'2020', data:toPoints(cycle2020), borderColor:'rgba(247,147,26,0.62)', backgroundColor:'rgba(247,147,26,0.03)', borderWidth:1.5, pointRadius:0, tension:0.35, spanGaps:true, fill:true },
-          { label:'2024', data:pts2024,              borderColor:'rgba(255,255,255,0.88)', backgroundColor:grad,                  borderWidth:2,   pointRadius:0, tension:0.35, spanGaps:true, fill:true },
-        ]
-      },
+      data: { labels, datasets: [
+        { label:'2012', data:toPx(raw2012,HP['2012']), borderColor:'rgba(247,147,26,0.28)', backgroundColor:mkGrad(247,147,26,0.12), borderWidth:1,   pointRadius:0, tension:0.4, fill:true, spanGaps:true },
+        { label:'2016', data:toPx(raw2016,HP['2016']), borderColor:'rgba(247,147,26,0.50)', backgroundColor:mkGrad(247,147,26,0.20), borderWidth:1.5, pointRadius:0, tension:0.4, fill:true, spanGaps:true },
+        { label:'2020', data:toPx(raw2020,HP['2020']), borderColor:'rgba(247,147,26,0.80)', backgroundColor:mkGrad(247,147,26,0.32), borderWidth:2,   pointRadius:0, tension:0.4, fill:true, spanGaps:true },
+        { label:'2024', data:pts2024,                  borderColor:'rgba(255,255,255,0.90)', backgroundColor:mkGrad(255,255,255,0.14), borderWidth:2.5, pointRadius:0, tension:0.4, fill:true, spanGaps:true },
+      ]},
       options: {
-        responsive: true, maintainAspectRatio: false, animation: false,
-        interaction: { mode:'index', intersect:false },
-        onHover: (_, __, chart) => {
-          const items = chart.getActiveElements();
-          _cycleHoverDay = items.length ? chart.data.labels[items[0].index] : null;
-        },
+        responsive:true, maintainAspectRatio:false, animation:false,
+        interaction:{ mode:'index', intersect:false },
+        onHover: (_,__,chart) => { const it = chart.getActiveElements(); _cycleHoverDay = it.length ? chart.data.labels[it[0].index] : null; },
         plugins: {
-          legend: { display:false },
-          tooltip: {
+          legend:{ display:false },
+          tooltip:{
             backgroundColor:'#111', borderColor:'rgba(255,255,255,0.10)', borderWidth:1,
             titleColor:'rgba(255,255,255,0.5)', bodyColor:'#f0f0f0',
             titleFont:{ family:'Roboto Condensed', size:10, weight:300 },
             bodyFont:{ family:'Roboto Condensed', size:12, weight:300 },
-            callbacks: {
-              title: items => `Dia ${items[0].label} pós-halving`,
-              label: item => ` ${item.dataset.label}: ${item.raw !== null ? item.raw+'x' : '--'}`,
+            callbacks:{
+              title: items => `Mês ${items[0].label} pós-halving`,
+              label: item => { if(item.raw==null) return null; const v=item.raw; return ` ${item.dataset.label}: `+(v>=1000?'$'+(v/1000).toFixed(0)+'K':'$'+v.toFixed(0)); }
             }
           }
         },
-        scales: {
-          x: { type:'linear', min:0, max:maxDays, grid:{ color:C.grid }, ticks:{ color:C.tick, font:{family:'Roboto Condensed',size:10}, maxTicksLimit:10, callback:v=>`${v}d` } },
-          y: { type:'logarithmic', grid:{ color:C.grid }, ticks:{ color:C.tick, font:{family:'Roboto Condensed',size:10}, callback:v=>v+'x' } }
+        scales:{
+          x:{ type:'linear', min:0, max:maxMonths, grid:{color:C.grid}, ticks:{color:C.tick, font:{family:'Roboto Condensed',size:10}, maxTicksLimit:13, callback:v=>(v%6===0)?v+'m':''} },
+          y:{ type:'logarithmic', min:5, grid:{color:C.grid}, ticks:{color:C.tick, font:{family:'Roboto Condensed',size:10}, callback:v=>{const ms=[10,100,1000,10000,100000,1000000];if(!ms.includes(v))return'';return v>=1000?'$'+(v/1000).toFixed(0)+'K':'$'+v;}} }
         }
       }
     });
     _animateDrawOn('cycles', [0, 200, 400, 600]);
   }
 
-  async function loadCycleCharts() {
+    async function loadCycleCharts() {
     calcHalving();
     try {
       const r = await fetch('/api/ohlc/cycle-daily?t=' + Date.now());
@@ -1683,30 +1652,32 @@
       }
     } catch(e) { console.warn('cycle-daily:', e); }
     _buildCyclesMain(_cycleDailyBars, _halvingPrice);
+    loadCycleStats(); // call AFTER _cycleDailyBars is populated
   }
 
   // Atualiza o ciclo em directo com o preço BTC actual
   function updateCycleLive(btcUsd) {
     if (!btcUsd) return;
     const decimalDay = getCycleDecimalDay();
-    const multiplier = parseFloat((btcUsd / _halvingPrice).toFixed(4));
+    const currentMonth = decimalDay / 30; // convert days → months for X-axis
 
     const chart = _chartInstances['cycles'];
     if (chart) {
-      const ds = chart.data.datasets[3];
+      const ds = chart.data.datasets[3]; // 2024 dataset
       const lbls = chart.data.labels;
       let bestIdx = 0, bestDist = Infinity;
       for (let i = 0; i < lbls.length; i++) {
-        const d = Math.abs(lbls[i] - decimalDay);
-        if (d < bestDist) { bestDist = d; bestIdx = i; }
+        const dist = Math.abs(lbls[i] - currentMonth);
+        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
       }
-      ds.data[bestIdx] = multiplier;
+      ds.data[bestIdx] = btcUsd; // actual USD price, not multiplier
       for (let i = bestIdx+1; i < ds.data.length; i++) ds.data[i] = null;
       chart.update('none');
     }
 
     const badge = document.getElementById('badge-cycles');
     if (badge) {
+      const multiplier = btcUsd / (_halvingPrice || 63800);
       const pctChange = ((multiplier - 1) * 100).toFixed(1);
       badge.className = 'chart-regime-badge ' + (multiplier >= 1 ? 'bull' : 'bear');
       badge.textContent = t(multiplier >= 1 ? 'badge-since-halving-above' : 'badge-since-halving-below', {pct: pctChange});
@@ -2860,13 +2831,12 @@
 
   // ── INIT ──
   calcHalving();
-  loadCycleCharts();
+  loadCycleCharts(); // also calls loadCycleStats() after _cycleDailyBars is ready
   loadPrices();
   loadAnalysis();
   loadFearGreed();
   loadNews();
   loadAgentSummary();
-  loadCycleStats();
   // Sparklines: carregam após layout estar pronto, refrescam a cada 5 min
   setTimeout(loadHeroSparkline, 300);
   setTimeout(loadAssetSparklines, 500);
