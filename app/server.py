@@ -173,35 +173,36 @@ def get_dashboard_data():
 
 
 # ── BITCOIN GLOBAL RANK ───────────────────────────────────────────────────────
-# Compara market cap BTC vs ouro + prata + top empresas via Yahoo Finance
-# (Yahoo Finance v8/chart funciona em cloud; Stooq bloqueia IPs Render)
-# (ticker, shares_outstanding_aprox, fx: fator para converter preço→USD)
+# Compara market cap BTC vs ouro + prata + top empresas
+# (yf_ticker, stooq_ticker, shares_outstanding_aprox, fx)
+# stooq_ticker=None → sem fallback Stooq (ex: Saudi Aramco)
 _RANK_COMPANIES = [
-    ("NVDA",     24_400_000_000, 1.0),
-    ("AAPL",     15_200_000_000, 1.0),
-    ("MSFT",      7_440_000_000, 1.0),
-    ("GOOGL",    12_100_000_000, 1.0),
-    ("AMZN",     10_500_000_000, 1.0),
-    ("META",      2_540_000_000, 1.0),
-    ("AVGO",      4_770_000_000, 1.0),
-    ("TSM",       5_181_000_000, 1.0),   # ADR (1 ADR = 5 ações TSMC)
-    ("TSLA",      3_210_000_000, 1.0),
-    ("BRK-B",     2_160_000_000, 1.0),
-    ("LLY",         896_000_000, 1.0),
-    ("JPM",       2_810_000_000, 1.0),
-    ("WMT",       8_060_000_000, 1.0),
-    ("V",         2_060_000_000, 1.0),
-    ("XOM",       3_970_000_000, 1.0),
-    ("2222.SR", 237_500_000_000, 1/3.75),  # Saudi Aramco: preço em SAR → USD
+    ("NVDA",    "nvda.us",   24_400_000_000, 1.0),
+    ("AAPL",    "aapl.us",   15_200_000_000, 1.0),
+    ("MSFT",    "msft.us",    7_440_000_000, 1.0),
+    ("GOOGL",   "googl.us",  12_100_000_000, 1.0),
+    ("AMZN",    "amzn.us",   10_500_000_000, 1.0),
+    ("META",    "meta.us",    2_540_000_000, 1.0),
+    ("AVGO",    "avgo.us",    4_770_000_000, 1.0),
+    ("TSM",     "tsm.us",     5_181_000_000, 1.0),   # ADR (1 ADR = 5 ações TSMC)
+    ("TSLA",    "tsla.us",    3_210_000_000, 1.0),
+    ("BRK-B",   "brk-b.us",  2_160_000_000, 1.0),
+    ("LLY",     "lly.us",      896_000_000, 1.0),
+    ("JPM",     "jpm.us",    2_810_000_000, 1.0),
+    ("WMT",     "wmt.us",    8_060_000_000, 1.0),
+    ("V",       "v.us",      2_060_000_000, 1.0),
+    ("XOM",     "xom.us",    3_970_000_000, 1.0),
+    ("2222.SR", None,      237_500_000_000, 1/3.75),  # Saudi Aramco: SAR→USD, sem Stooq
 ]
 
 
-def _yahoo_mc(ticker, shares, fx):
-    """Busca preço via Yahoo Finance v8 e calcula market cap em USD."""
+def _get_mc(yf_ticker, stooq_ticker, shares, fx):
+    """Market cap em USD: Yahoo Finance primário, Stooq fallback."""
+    # 1) Yahoo Finance
     try:
         _c = _get_yf_crumb()
         r = _yf_session.get(
-            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1d"
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_ticker}?interval=1d&range=1d"
             + (f"&crumb={_c}" if _c else ""),
             timeout=8,
         )
@@ -212,6 +213,28 @@ def _yahoo_mc(ticker, shares, fx):
             return closes[-1] * fx * shares
     except Exception:
         pass
+    # 2) Stooq fallback (apenas ações US; Saudi Aramco não tem ticker Stooq)
+    if stooq_ticker:
+        try:
+            r2 = requests.get(
+                f"https://stooq.com/q/l/?s={stooq_ticker}&f=sd2t2ohlcv&h&e=csv",
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=10,
+            )
+            r2.raise_for_status()
+            lines = [l.strip() for l in r2.text.strip().split("\n") if l.strip()][1:]
+            for line in reversed(lines):
+                cols = line.split(",")
+                if len(cols) >= 5:
+                    try:
+                        price = float(cols[4])  # close
+                        if price > 0:
+                            logger.info(f"Rank MC {yf_ticker} via Stooq: ${price:.2f}")
+                            return price * fx * shares
+                    except Exception:
+                        continue
+        except Exception as e:
+            logger.warning(f"Stooq MC {stooq_ticker}: {e}")
     return 0
 
 
@@ -225,13 +248,14 @@ def fetch_btc_rank(btc_usd, gold_usd=None, silver_usd=None):
         market_caps.append(silver_usd * 55_900_000_000)  # ~55.9B troy oz acima do solo
 
     with ThreadPoolExecutor(max_workers=8) as ex:
-        futures = [ex.submit(_yahoo_mc, t, s, fx) for t, s, fx in _RANK_COMPANIES]
+        futures = [ex.submit(_get_mc, t, st, s, fx) for t, st, s, fx in _RANK_COMPANIES]
         for f in as_completed(futures):
             mc = f.result()
             if mc > 0:
                 market_caps.append(mc)
 
     ranked = sorted(market_caps, reverse=True)
+    logger.info(f"BTC rank: {len(market_caps)} assets comparados, MC BTC=${btc_mc/1e12:.2f}T")
     try:
         return ranked.index(btc_mc) + 1
     except ValueError:
