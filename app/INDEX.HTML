@@ -1649,10 +1649,22 @@
       if (d.bars && d.bars.length) {
         _halvingPrice = d.halving_price || 63800;
         _cycleDailyBars = d.bars;
+
+        // Preencher cycle high/low imediatamente a partir dos closes diários
+        const fmtK = v => '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'K' : v.toFixed(0));
+        const closes = d.bars.map(b => b.c).filter(c => c > 0);
+        if (closes.length > 0) {
+          const hi = Math.max(...closes);
+          const lo = Math.min(...closes);
+          const hiEl = document.getElementById('cycle-high-val');
+          const loEl = document.getElementById('cycle-low-val');
+          if (hiEl) hiEl.textContent = '▲ ' + fmtK(hi);
+          if (loEl) loEl.textContent = '▼ ' + fmtK(lo);
+        }
       }
     } catch(e) { console.warn('cycle-daily:', e); }
     _buildCyclesMain(_cycleDailyBars, _halvingPrice);
-    loadCycleStats(); // call AFTER _cycleDailyBars is populated
+    loadCycleStats(); // refinamento: usa high/low reais de velas (não só closes)
   }
 
   // Atualiza o ciclo em directo com o preço BTC actual
