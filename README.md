@@ -21,7 +21,13 @@
 
 ---
 
-## 📡 Live Preview
+## 🚀 Live Application
+
+👉 https://sardinhas-bitcoin-int.onrender.com/
+
+---
+
+## 📡 Preview
 
 <p align="center">
   <img src="screenshot.png" width="950"/>
@@ -85,12 +91,6 @@ Instead of relying on isolated indicators:
 The goal is to answer:
 
 **“What is the most probable next move?”**
-
----
-
-## 🚀 Live Application
-
-👉 https://sardinhas-bitcoin-int.onrender.com/
 
 ---
 
