@@ -9,22 +9,15 @@
 https://www.coindesk.com/arc/outboundfeeds/rss/
 https://cointelegraph.com/rss
 https://bitcoinmagazine.com/feed
+https://blog.bitcoin.com/feed
 https://blog.bitmex.com/feed/
+https://medium.com/feed/blockchain
+https://blog.kraken.com/feed
+https://bitcoincore.org/en/rss.xml
+https://thebitcoinnews.com/feed/
 https://www.theblock.co/rss.xml
 
 # --- MACRO / MERCADOS ---
-# https://feeds.bloomberg.com/markets/news.rss  # requer autenticação — removido
-# https://www.zerohedge.com/fullrss2.xml        # bloqueia bots — removido
 https://cryptonews.com/news/feed/
 https://decrypt.co/feed
 
-# --- X/TWITTER (não tem RSS nativo — usa nitter como proxy gratuito)
-# Substitui USERNAME pelo handle sem @
-# [desactivado — instâncias nitter instáveis] https://nitter.poast.org/AlexCryptoPT/rss
-# [desactivado — instâncias nitter instáveis] https://nitter.poast.org/saylor/rss
-# [desactivado — instâncias nitter instáveis] https://nitter.poast.org/APompliano/rss
-# [desactivado — instâncias nitter instáveis] https://nitter.poast.org/DocumentingBTC/rss
-# [desactivado — instâncias nitter instáveis] https://nitter.poast.org/BitcoinMagazine/rss
-# [desactivado — instâncias nitter instáveis] https://nitter.poast.org/CoinDesk/rss
-# [desactivado — instâncias nitter instáveis] https://nitter.poast.org/willywoo/rss
-# [desactivado — instâncias nitter instáveis] https://nitter.poast.org/tom_doerr/rss
