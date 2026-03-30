@@ -1666,9 +1666,9 @@
         }
       }
     } catch(e) { console.warn('cycle-daily:', e); }
-    _buildCyclesMain(_cycleDailyBars, _halvingPrice);
-    if (_btcUsd) updateCycleLive(_btcUsd); // sincroniza o ponto vivo com preço já carregado
-    loadCycleStats(); // refinamento: usa high/low reais de velas (não só closes)
+    try { _buildCyclesMain(_cycleDailyBars, _halvingPrice); } catch(e) { console.warn('buildCycles:', e); }
+    if (_btcUsd) updateCycleLive(_btcUsd);
+    loadCycleStats();
   }
 
   // Atualiza o ciclo em directo com o preço BTC actual
@@ -2517,30 +2517,26 @@
   // ── MAYER MULTIPLE ────────────────────────────────────────────────────────
   async function loadCycleStats() {
     const fmtK = v => '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'K' : v.toFixed(0));
+    const fmtDate = ms => { const d = new Date(ms); return d.toLocaleDateString('en-GB',{month:'short',year:'2-digit'}); };
     const hiEl = document.getElementById('cycle-high-val');
     const loEl = document.getElementById('cycle-low-val');
+    if (!hiEl || !loEl) return;
 
-    // Tentar API (dados exactos com high/low de velas)
+    // Binance klines diárias desde o halving — funciona no browser sem autenticação
+    const HALVING_MS = 1713484800000;
     try {
-      const r = await fetch('/api/cycle-stats?t=' + Date.now());
-      const d = await r.json();
-      if (d.cycle_high && d.cycle_low) {
-        if (hiEl) hiEl.textContent = '▲ ' + fmtK(d.cycle_high) + '  ' + d.cycle_high_date;
-        if (loEl) loEl.textContent = '▼ ' + fmtK(d.cycle_low)  + '  ' + d.cycle_low_date;
-        return;
+      const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&startTime=${HALVING_MS}&limit=1000`;
+      const klines = await fetch(url).then(r => r.json());
+      if (!Array.isArray(klines) || !klines.length) throw new Error('sem dados');
+      let hiVal = 0, loVal = Infinity, hiMs = 0, loMs = 0;
+      for (const k of klines) {
+        const hi = parseFloat(k[2]), lo = parseFloat(k[3]), ts = k[0];
+        if (hi > hiVal) { hiVal = hi; hiMs = ts; }
+        if (lo < loVal) { loVal = lo; loMs = ts; }
       }
-    } catch(e) { console.warn('CycleStats API:', e); }
-
-    // Fallback: calcular a partir dos closes diários já carregados
-    if (_cycleDailyBars && _cycleDailyBars.length > 1) {
-      const closes = _cycleDailyBars.map(b => b.c).filter(c => c > 0);
-      if (closes.length > 0) {
-        const hi = Math.max(...closes);
-        const lo = Math.min(...closes);
-        if (hiEl) hiEl.textContent = '▲ ' + fmtK(hi);
-        if (loEl) loEl.textContent = '▼ ' + fmtK(lo);
-      }
-    }
+      hiEl.textContent = '▲ ' + fmtK(hiVal) + '  ' + fmtDate(hiMs);
+      loEl.textContent = '▼ ' + fmtK(loVal) + '  ' + fmtDate(loMs);
+    } catch(e) { console.warn('CycleStats Binance:', e); }
   }
 
   // ── TEMA CLARO / ESCURO ───────────────────────────────────────────────────
