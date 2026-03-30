@@ -50,7 +50,7 @@ Only signal.
 * Minimal UI → faster cognition
 * Data > opinions
 * Context over indicators
-* Designed for **real traders**, not demos
+* Bitcoin chart by **cycles**
 
 ---
 
