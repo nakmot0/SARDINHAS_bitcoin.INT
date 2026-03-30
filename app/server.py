@@ -1791,7 +1791,7 @@ def api_cycle_stats():
             f"https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD"
             f"?interval=1d&period1={halving_s}&period2={int(time.time())}"
             + (f"&crumb={_yf_c}" if _yf_c else ""),
-            timeout=15,
+            timeout=5,
         )
         ry.raise_for_status()
         dy = ry.json()
@@ -1819,7 +1819,7 @@ def api_cycle_stats():
                 f"https://api.bybit.com/v5/market/kline?category=spot"
                 f"&symbol=BTCUSDT&interval=D&start={HALVING_4_MS}&limit=1000",
                 headers=H,
-                timeout=15,
+                timeout=5,
             )
             rb.raise_for_status()
             db = rb.json()
@@ -1892,7 +1892,7 @@ def api_ohlc_cycle_daily():
             f"https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD"
             f"?interval=1d&period1={halving_s}&period2={int(time.time())}"
             + (f"&crumb={_yf_c}" if _yf_c else ""),
-            timeout=15,
+            timeout=5,
         )
         ry.raise_for_status()
         dy = ry.json()
@@ -1912,7 +1912,7 @@ def api_ohlc_cycle_daily():
             rb = requests.get(
                 f"https://api.bybit.com/v5/market/kline?category=spot"
                 f"&symbol=BTCUSDT&interval=D&start={HALVING_4_MS}&limit=1000",
-                headers=H, timeout=15,
+                headers=H, timeout=5,
             )
             rb.raise_for_status()
             db = rb.json()
