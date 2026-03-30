@@ -708,18 +708,8 @@
     .flip-tag.bearish { background: rgba(248,113,113,0.08); color: var(--red); }
     .flip-tag.neutral { background: var(--faint); color: var(--muted); }
 
-    .flip-char {
-      display: inline-block;
-      position: relative;
-      animation: flipChar 0.35s ease both;
-      transform-origin: center bottom;
-    }
-
-    @keyframes flipChar {
-      0%   { transform: rotateX(90deg); opacity: 0; }
-      60%  { transform: rotateX(-8deg); opacity: 1; }
-      100% { transform: rotateX(0deg);  opacity: 1; }
-    }
+    .flip-rows-fade-out { opacity: 0; transition: opacity 0.35s ease; }
+    .flip-rows-fade-in  { opacity: 1; transition: opacity 0.4s ease; }
 
     /* ── LOADING ── */
     .loading {
@@ -1494,7 +1484,7 @@
       const { ctx, scales: { x, y }, data } = chart;
       const cd = getCycleDecimalDay();
       _cycleCurrentDay = cd;
-      const cdM = cd / 30;
+      const cdM = cd * 48 / TOTAL_DAYS;
       const ds2024 = data.datasets[3].data;
       const lbls = data.labels;
       let yVal = null;
@@ -1583,14 +1573,27 @@
     }
     const toPx = (raw, hp) => labels.map(m => parseFloat((interp(raw, m) * hp).toFixed(2)));
     const cd = getCycleDecimalDay();
-    const cdM = cd / 30;
-    let pts2024 = new Array(labels.length).fill(null);
+    const cdM = cd * 48 / TOTAL_DAYS;
+    let pts2024;
     if (bars.length > 0) {
-      bars.forEach(b => {
-        const idx = Math.round(b.day / 30);
-        if (idx >= 0 && idx <= maxMonths && b.c > 0) pts2024[idx] = b.c;
+      // Interpolação linear precisa: para cada mês inteiro, interpolar entre bars diários adjacentes
+      const validBars = bars.filter(b => b.c > 0).sort((a, b) => a.day - b.day);
+      pts2024 = labels.map(m => {
+        if (m > cdM + 0.05) return null;
+        const targetDay = m * TOTAL_DAYS / 48;
+        // encontrar os dois bars que rodeiam targetDay
+        let lo = null, hi = null;
+        for (let i = 0; i < validBars.length; i++) {
+          if (validBars[i].day <= targetDay) lo = validBars[i];
+          else { hi = validBars[i]; break; }
+        }
+        if (!lo && !hi) return null;
+        if (!lo) return hi.c;
+        if (!hi) return lo.c;
+        if (lo.day === hi.day) return lo.c;
+        const t = (targetDay - lo.day) / (hi.day - lo.day);
+        return parseFloat((lo.c + t * (hi.c - lo.c)).toFixed(2));
       });
-      for (let i = 0; i < labels.length; i++) { if (labels[i] > cdM + 0.5) pts2024[i] = null; }
     } else {
       const fb = [[0,1],[1,1.05],[2,0.95],[3,0.93],[4,0.97],[5,0.90],[6,1.10],[7,1.40],[8,1.60],[9,1.40],[10,1.35],[11,1.25],[12,1.40],[13,1.55]];
       pts2024 = labels.map(m => m <= cdM ? parseFloat((interp(fb, m) * HP['2024']).toFixed(2)) : null);
@@ -1664,6 +1667,7 @@
       }
     } catch(e) { console.warn('cycle-daily:', e); }
     _buildCyclesMain(_cycleDailyBars, _halvingPrice);
+    if (_btcUsd) updateCycleLive(_btcUsd); // sincroniza o ponto vivo com preço já carregado
     loadCycleStats(); // refinamento: usa high/low reais de velas (não só closes)
   }
 
@@ -1671,7 +1675,7 @@
   function updateCycleLive(btcUsd) {
     if (!btcUsd) return;
     const decimalDay = getCycleDecimalDay();
-    const currentMonth = decimalDay / 30; // convert days → months for X-axis
+    const currentMonth = decimalDay * 48 / TOTAL_DAYS;
 
     const chart = _chartInstances['cycles'];
     if (chart) {
@@ -2270,9 +2274,10 @@
         const el = document.getElementById('btc-price');
         const locale = _lang === 'pt' ? 'pt-PT' : 'en-US';
         const newText = '$' + d.btc_usd.toLocaleString(locale, { maximumFractionDigits: 0 });
-        // Anima sempre — pulso visual a cada 3s; atualiza texto se mudou
         animatePrice(el);
         if (el.textContent !== newText) el.textContent = newText;
+        _btcUsd = d.btc_usd;
+        updateCycleLive(d.btc_usd); // atualiza o ponto vivo no gráfico de ciclos
       }
       if (d.btc_change_24h !== null && d.btc_change_24h !== undefined)
         setBadge(document.getElementById('btc-badge'), d.btc_change_24h);
@@ -2300,17 +2305,6 @@
   let flipTimer   = null;
   const VISIBLE      = 5;
   const FLIP_INTERVAL = 12000;  // 12 segundos entre rotações
-  const CHAR_DELAY    = 35;     // ms entre cada char (mais lento)
-  const LINE_DELAY    = 500;    // ms entre linhas (mais espaçado)
-
-  // Anima texto letra a letra — delay base controla quando começa esta linha
-  function flipText(el, text, baseDelay) {
-    el.innerHTML = text.split('').map((c, i) => {
-      if (c === ' ') return ' ';
-      const d = baseDelay + i * CHAR_DELAY;
-      return `<span class="flip-char" style="animation-delay:${d}ms">${c}</span>`;
-    }).join('');
-  }
 
   function renderFlipRows(startIdx) {
     const rows  = document.getElementById('flip-rows');
@@ -2320,13 +2314,12 @@
     rows.innerHTML = slice.map(n => `
       <div class="flip-row" data-href="${n.link.replace(/"/g,'&quot;')}" style="cursor:pointer">
         <div>
-          <div class="flip-headline" data-text="${n.title.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}"></div>
+          <div class="flip-headline">${n.title.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
           <div class="flip-meta">${n.source} · ${n.date}</div>
         </div>
         <span class="flip-tag ${n.sentiment}">${t('sent-'+n.sentiment)}</span>
       </div>`).join('');
 
-    // Abrir link de forma segura (sem XSS via onclick inline)
     rows.querySelectorAll('.flip-row').forEach(row => {
       row.addEventListener('click', () => {
         const href = row.dataset.href;
@@ -2334,18 +2327,22 @@
       });
     });
 
-    // linha 0 começa imediatamente, linha 1 após LINE_DELAY, linha 2 após 2×LINE_DELAY
-    rows.querySelectorAll('.flip-headline').forEach((el, i) => {
-      flipText(el, el.getAttribute('data-text'), i * LINE_DELAY);
-    });
+    // fade-in suave ao aparecer
+    rows.classList.remove('flip-rows-fade-out');
+    rows.classList.add('flip-rows-fade-in');
   }
 
   function advanceFlip() {
     if (!allArticles.length) return;
-    flipIndex = (flipIndex + VISIBLE) % allArticles.length;
-    // se restar menos de VISIBLE no final, volta ao início
-    if (flipIndex + VISIBLE > allArticles.length) flipIndex = 0;
-    renderFlipRows(flipIndex);
+    const rows = document.getElementById('flip-rows');
+    // fade-out, depois troca conteúdo e fade-in
+    rows.classList.remove('flip-rows-fade-in');
+    rows.classList.add('flip-rows-fade-out');
+    setTimeout(() => {
+      flipIndex = (flipIndex + VISIBLE) % allArticles.length;
+      if (flipIndex + VISIBLE > allArticles.length) flipIndex = 0;
+      renderFlipRows(flipIndex);
+    }, 380);
   }
 
   async function loadNews() {
