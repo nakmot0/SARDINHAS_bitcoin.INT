@@ -2,7 +2,7 @@
 <html lang="pt-PT">
 <head>
   <meta charset="UTF-8" />
-  <!-- PWA: viewport optimizado para Xiaomi 15T Pro (1220x2712) e iPad -->
+  <!-- PWA: viewport optimizado para Smartphone (1220x2712) e iPad -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
@@ -562,17 +562,23 @@
     }
 
     .bar-track {
+      height: 3px;
+      position: relative;
+    }
+    .bar-track::before {
+      content: '';
+      position: absolute;
+      inset: 0;
       background: var(--faint);
       border-radius: 1px;
-      height: 3px;
-      overflow: hidden;
     }
 
     .bar-fill {
+      position: relative;
       height: 100%;
       background: var(--btc);
       border-radius: 1px;
-      transition: width 1s ease;
+      transition: width 0.8s ease;
     }
 
     .halving-labels {
@@ -1524,6 +1530,16 @@
       ctx.fillStyle = 'rgba(255,255,255,0.45)';
       ctx.fillText('M' + Math.floor(cdM), xPos, yPos - 30);
       ctx.restore();
+
+      // Alinhar barra de progresso com o chartArea (compensa o padding do eixo Y)
+      const bt = document.querySelector('.bar-track');
+      if (bt) {
+        const pl = chart.chartArea.left;
+        const pr = chart.width - chart.chartArea.right;
+        bt.style.paddingLeft  = pl + 'px';
+        bt.style.paddingRight = pr + 'px';
+        bt.style.boxSizing    = 'border-box';
+      }
     }
   };
 
