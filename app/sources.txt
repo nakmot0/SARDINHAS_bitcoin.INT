@@ -9,13 +9,13 @@
 https://www.coindesk.com/arc/outboundfeeds/rss/
 https://cointelegraph.com/rss
 https://bitcoinmagazine.com/feed
-https://blog.bitcoin.com/feed
+# https://blog.bitcoin.com/feed
 https://blog.bitmex.com/feed/
 https://medium.com/feed/blockchain
 https://blog.kraken.com/feed
 https://bitcoincore.org/en/rss.xml
 https://thebitcoinnews.com/feed/
-https://www.theblock.co/rss.xml
+# https://www.theblock.co/rss.xml
 
 # --- MACRO / MERCADOS ---
 https://cryptonews.com/news/feed/
